@@ -1,0 +1,15 @@
+﻿<Window x:Class="CAS.WindowCabinetInfo"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cabinet Information" Height="180" Width="300" Icon="/Resources/CLED_CAS_App_Icon_170327.ico" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Topmost="True">
+    <Grid Background="#FF202020">
+        <!--<TextBlock x:Name="txbMesssage" HorizontalAlignment="Left" Margin="10,10,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="24" Width="272" Foreground="White" Text="Cabinet Information"/>-->
+        <Label x:Name="lbModelName" HorizontalAlignment="Left" Margin="30,20,0,0" VerticalAlignment="Top" Width="100" Height="24" Foreground="White" Content="Model Name"/>
+        <TextBox x:Name="txbModelName" HorizontalAlignment="Left" Height="23" Margin="135,25,0,0" TextAlignment="Center" MaxLength="32" VerticalAlignment="Top" Width="130"  x:FieldModifier="public" 
+                 PreviewTextInput="InputModelName_PreviewTextInput"/>
+        <Label x:Name="lbSerialNo" HorizontalAlignment="Left" Margin="30,55,0,0" VerticalAlignment="Top" Width="100" Height="24" Foreground="White" Content="Serial Number"/>
+        <TextBox x:Name="txbSerialNo" HorizontalAlignment="Left" Height="23" Margin="135,60,0,0" TextAlignment="Center" MaxLength="7" VerticalAlignment="Top" Width="130"  x:FieldModifier="public" 
+                 PreviewTextInput="InputSerialNo_PreviewTextInput"/>
+        <Button x:Name="btnCabinetDataSettingOK" Content="OK" HorizontalAlignment="Left" Margin="105,100,0,0" VerticalAlignment="Top" Width="90" Height="30" Click="btnCabinetDataSettingOK_Click" />
+    </Grid>
+</Window>

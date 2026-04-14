@@ -1,0 +1,32 @@
+﻿<Window x:Class="CAS.WindowControllerCount"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Layout Setting (1)" Height="130" Width="310" Icon="/Resources/CLED_CAS_App_Icon_170327.ico" ResizeMode="NoResize" WindowStartupLocation="CenterScreen">
+    <Grid Background="#FF202020" Margin="0">
+        <TextBlock HorizontalAlignment="Left" Margin="10,10,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="24" Width="272" Foreground="White" Text="Please choose number of controllers."/>
+        <ComboBox x:Name="cmbxControllerCount" HorizontalAlignment="Left" Margin="35,0,0,18" VerticalAlignment="Bottom" Width="120" x:FieldModifier="public">
+            <ComboBoxItem Content="1"/>
+            <ComboBoxItem Content="2"/>
+            <ComboBoxItem Content="3"/>
+            <ComboBoxItem Content="4"/>
+            <ComboBoxItem Content="5"/>
+            <ComboBoxItem Content="6"/>
+            <ComboBoxItem Content="7"/>
+            <ComboBoxItem Content="8"/>
+            <ComboBoxItem Content="9"/>
+            <ComboBoxItem Content="10"/>
+            <ComboBoxItem Content="11"/>
+            <ComboBoxItem Content="12"/>
+            <ComboBoxItem Content="13"/>
+            <ComboBoxItem Content="14"/>
+            <ComboBoxItem Content="15"/>
+            <ComboBoxItem Content="16"/>
+            <ComboBoxItem Content="17"/>
+            <ComboBoxItem Content="18"/>
+            <ComboBoxItem Content="19"/>
+            <ComboBoxItem Content="20"/>
+        </ComboBox>
+        <Button x:Name="btnControllerCountOK" Content="OK" HorizontalAlignment="Left" Margin="192,0,0,10" VerticalAlignment="Bottom" Width="90" Height="40" Click="btnControllerCountOK_Click"/>
+
+    </Grid>
+</Window>

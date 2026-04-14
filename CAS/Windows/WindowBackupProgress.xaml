@@ -1,0 +1,70 @@
+﻿<Window x:Class="CAS.WindowBackupProgress"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Backup Progress" Height="143" Width="300" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize" Icon="/Resources/CLED_CAS_App_Icon_170327.ico">
+    <Window.Resources>
+        <!-- トラックのバックグラウンド -->
+        <LinearGradientBrush x:Key="TrackBackground" EndPoint="0.5,1" StartPoint="0.5,0">
+            <GradientStop Color="#FFFBFBFB" Offset="0"/>
+            <GradientStop Color="#FFB1B1B1" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- インジケーターのバックグラウンド -->
+        <LinearGradientBrush x:Key="IndicatorBackground" EndPoint="0.5,1" StartPoint="0.5,0">
+            <GradientStop Color="#FFE7EFF7" Offset="0"/>
+            <GradientStop Color="#FF7FBFFF" Offset="0.5"/>
+            <GradientStop Color="#FF0A4178" Offset="1"/>
+        </LinearGradientBrush>
+        <!-- 光沢上部 -->
+        <LinearGradientBrush x:Key="LightingTop" 
+                         StartPoint="0,0" EndPoint="0,0.5">
+            <GradientStop Offset="0" Color="#CCFFFFFF" />
+            <GradientStop Offset="0.1" Color="#CCFFFFFF" />
+            <GradientStop Offset="0.4" Color="#99FFFFFF" />
+            <GradientStop Offset="1" Color="#00FFFFFF" />
+        </LinearGradientBrush>
+        <!-- 光沢下部-->
+        <RadialGradientBrush x:Key="LightingBottom"
+                         GradientOrigin="0.5,1.0"
+                         Center="0.5,1.0" RadiusX="1" RadiusY="0.1">
+            <RadialGradientBrush.GradientStops>
+                <GradientStop Color="#AAFFFFFF" Offset="0" />
+                <GradientStop Color="#00FFFFFF" Offset="1" />
+            </RadialGradientBrush.GradientStops>
+        </RadialGradientBrush>
+
+
+        <!-- ProgressBarのサイズ設定 -->
+        <Style TargetType="ProgressBar" x:Key="ProgressBarSize">
+            <Setter Property="Width" Value="100" />
+            <Setter Property="Height" Value="100" />
+            <Setter Property="Margin" Value="10,0,0,10" />
+        </Style>
+        <!-- プログレスバースタイルを定義 -->
+        <Style TargetType="ProgressBar" x:Key="RectangleProgressBar">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid>
+                            <Border Name="PART_Track" CornerRadius="1"  BorderThickness="1" 
+                                Background="{StaticResource TrackBackground}"
+                                BorderBrush="{TemplateBinding BorderBrush}"/>
+                            <Grid Name="PART_Indicator" HorizontalAlignment="Left" >
+                                <Rectangle x:Name="prgBackground" Margin="0" RadiusX="1" RadiusY="1" 
+                                       Fill="{StaticResource IndicatorBackground}" />
+                                <Rectangle x:Name="Highlight1" Margin="1" RadiusX="1" RadiusY="1"
+                                       Fill="{StaticResource LightingTop}" />
+                                <Rectangle x:Name="Highlight2" Margin="0" RadiusX="1" RadiusY="1"
+                                       Fill="{StaticResource LightingBottom}" />
+                            </Grid>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Background="#FF202020">
+        <ProgressBar x:Name="pbBackupProgress" Margin="10,0,12,10" Width="272" VerticalAlignment="Bottom" Height="38" Foreground="#FF0663B0" />
+        <Label x:Name="lbBackupStatus" Content="Backup Start!" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="White" Margin="10,10,0,0" Height="51" Width="272"/>
+    </Grid>
+</Window>

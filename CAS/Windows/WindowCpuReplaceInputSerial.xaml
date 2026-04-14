@@ -1,0 +1,12 @@
+﻿<Window x:Class="CAS.WindowInputSerial"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Replace CPU Board" Height="130" Width="300" ResizeMode="NoResize" Icon="/Resources/CLED_CAS_App_Icon_170327.ico" WindowStartupLocation="CenterScreen" Topmost="True">
+    <Grid Background="#FF202020">
+        <TextBlock x:Name="txbMesssage" HorizontalAlignment="Left" Margin="10,10,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="24" Width="272" Foreground="White" Text="Enter Controller serial number"/>
+        <Button x:Name="btnOK" Content="OK" HorizontalAlignment="Left" Margin="214,51,0,0" VerticalAlignment="Top" Width="60" Height="30" Click="btnControllerIPOK_Click" />
+        <TextBox x:Name="txbSerial" HorizontalAlignment="Left" Height="23" Margin="83,39,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"  x:FieldModifier="public" KeyUp="txbSerial_KeyUp"/>
+        <Label Content="SN" HorizontalAlignment="Left" Margin="45,39,0,0" VerticalAlignment="Top" BorderBrush="White" Foreground="White" BorderThickness="1" Height="26"/>
+
+    </Grid>
+</Window>

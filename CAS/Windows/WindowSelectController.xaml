@@ -1,0 +1,11 @@
+﻿<Window x:Class="CAS.WindowSelectController"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Height="130" Width="310" Icon="/Resources/CLED_CAS_App_Icon_170327.ico" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <Grid Background="#FF202020">
+        <TextBlock x:Name="titleMsg" HorizontalAlignment="Left" Margin="10,10,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="24" Width="272" Foreground="White"/>
+        <Button x:Name="btnControllerIPOK" Content="OK" HorizontalAlignment="Left" Margin="192,39,0,0" VerticalAlignment="Top" Width="90" Height="40" Click="btnControllerIPOK_Click" />
+        <TextBox x:Name="tbxControllerIP" HorizontalAlignment="Left" Height="23" Margin="35,49,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"  x:FieldModifier="public" KeyUp="tbxControllerIP_KeyUp"/>
+
+    </Grid>
+</Window>

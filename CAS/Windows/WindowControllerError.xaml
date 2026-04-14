@@ -1,0 +1,23 @@
+﻿<Window x:Class="CAS.WindowControllerError"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Controller Error Status" Height="450" Width="310" ResizeMode="NoResize" Icon="/Resources/CLED_CAS_App_Icon_170327.ico">
+    <Grid Background="#FF202020">
+        <Label x:Name="lbController" Content="Controller-" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.553,-0.192" Foreground="White"/>
+        <Label Content="Error :" HorizontalAlignment="Left" Margin="10,41,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.553,-0.192" Foreground="White"/>
+        <ListBox x:Name="lbxError" HorizontalAlignment="Left" Height="170" Margin="10,72,0,0" VerticalAlignment="Top" Width="274" ScrollViewer.VerticalScrollBarVisibility="Visible" Background="#FF404040" BorderBrush="Black" Foreground="White"/>
+        <Label Content="Temperature [deg.] :" HorizontalAlignment="Left" Margin="10,257,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.553,-0.192" Foreground="White"/>
+        <Button Content="Close" HorizontalAlignment="Left" Margin="209,363,0,0" VerticalAlignment="Top" Width="75" Height="25" Click="Button_Click"/>
+        <Grid HorizontalAlignment="Left" Height="100" Margin="10,288,0,0" VerticalAlignment="Top" Width="120" Background="White">
+            <TextBox HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" Text="IF" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" VerticalContentAlignment="Center"/>
+            <TextBox HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" Text="PS" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" Margin="0,25,0,0" VerticalContentAlignment="Center"/>
+            <TextBox HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" Text="DIF/VIF" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" Margin="0,50,0,0" VerticalContentAlignment="Center"/>
+            <TextBox HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" Text="PIF" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" Margin="0,75,0,0" VerticalContentAlignment="Center"/>
+            <TextBox x:Name="txbIfTemp" HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" VerticalContentAlignment="Center" Margin="60,0,0,0"/>
+            <TextBox x:Name="txbPsTemp" HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" VerticalContentAlignment="Center" Margin="60,25,0,0"/>
+            <TextBox x:Name="txbDifTemp" HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" VerticalContentAlignment="Center" Margin="60,50,0,0"/>
+            <TextBox x:Name="txbPifTemp" HorizontalAlignment="Left" Height="25" TextWrapping="Wrap" VerticalAlignment="Top" Width="60" IsReadOnly="True" BorderBrush="Black" VerticalContentAlignment="Center" Margin="60,75,0,0"/>
+        </Grid>
+
+    </Grid>
+</Window>
