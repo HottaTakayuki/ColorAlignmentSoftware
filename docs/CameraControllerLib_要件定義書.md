@@ -1,4 +1,4 @@
-# CameraController.lib 要件定義書
+﻿# CameraController.lib 要件定義書
 
 | 項目 | 内容 |
 |------|------|

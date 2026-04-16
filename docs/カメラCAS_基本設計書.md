@@ -1,4 +1,4 @@
-# 基本設計書
+﻿# 基本設計書
 
 | 項目 | 内容 |
 |------|------|
@@ -17,11 +17,11 @@
 
 #### システム概要
 
-本システムは、Windows 上で動作する Color Alignment Software（CAS）を中核とし、Controller 連携、カメラ撮影、画像処理、補正値算出、を通じて表示装置の調整作業（U/F調整及び目地補正）を支援するデスクトップアプリケーション群で構成される。
+本システムは、Windows 上で動作する Color Alignment Software（CAS）を中核とし、Controller 連携、カメラ撮影、画像解析、補正値算出、を通じて表示装置の調整作業（U/F調整及び目地補正）を支援するデスクトップアプリケーション群で構成される。
 
 ソリューション上、オペレータが利用する WPF アプリケーション CAS と、カメラ制御補助アプリケーション AlphaCameraController で構成される。
 
-実行時は、CAS Components 配下の AlphaCameraController.exe を別プロセスとして起動し、AlphaCameraController が CameraControl.dll を動的ロードしてカメラ実機を制御する。CAS と AlphaCameraController の間では、CameraDataClass で定義された制御データ CamCont.bin を XML ファイルとして受け渡す構成である。CAS 本体は OpenCvSharp、AcquisitionARW を利用して画像処理・RAW 画像取扱いを実施し、Controller に対する補正処理を行う。外部連携先として、調整対象となるCabinetを制御するController及びカメラを利用する。
+実行時は、CAS Components 配下の AlphaCameraController.exe を別プロセスとして起動し、AlphaCameraController が CameraControl.dll を動的ロードしてカメラ実機を制御する。CAS と AlphaCameraController の間では、CameraDataClass で定義された制御データ CamCont.bin を XML ファイルとして受け渡す構成である。CAS 本体は OpenCvSharp、AcquisitionARW を利用して画像解析・RAW 画像取扱いを実施し、Controller に対する補正処理を行う。外部連携先として、調整対象となるCabinetを制御するController及びカメラを利用する。
 
 なお、本システムはSaaS/ASP を前提としたWeb システムではなく、.NET Framework 4.5/4.5.1 ベースのオンプレミス型Windows アプリケーションとして構成する。
 
@@ -64,7 +64,7 @@ flowchart TD
 
 | 構成要素 | 役割 | 備考|
 |----------|------|------|
-| CAS | システムの主アプリケーション。条件設定、撮影、画像処理、補正値算出、Controller 連携、結果表示を担う。 | WPF、.NET Framework 4.5.1。ソリューションの中核。 |
+| CAS | システムの主アプリケーション。条件設定、撮影、画像解析、補正値算出、Controller 連携、結果表示を担う。 | WPF、.NET Framework 4.5.1。ソリューションの中核。 |
 | AlphaCameraController | CAS から起動されるカメラ制御補助アプリケーション。常駐しながら制御ファイルを監視し、撮影やライブビュー実行を行う。| WPF アプリケーション。通知領域常駐型。|
 | CameraControl | カメラ接続、撮影、撮影条件設定、AF 、ライブビュー制御を担う共通ライブラリ。| CameraControllerSharp 、OpenCvSharp を参照し、AlphaCameraController から動的ロードされる。|
 | CameraDataClass | 撮影条件、AF エリア、基準位置、制御データ、座標などの共通データ定義を提供する。| CAS 、AlphaCameraController 、CameraControl の各プロジェクトで参照される。|
@@ -81,7 +81,7 @@ flowchart TD
 |------|------|
 | 採用方式| Windows デスクトップアプリケーション方式を採用し、主処理 CAS に集約される。|
 | 採用製品サービス | .NET Framework 4.5/4.5.1 、WPF 、OpenCvSharp 、CameraControllerSharp を利用する。|
-| 選定理由 | カメラ制御、画像処理ローカル装置連携を同一端末上で完結でき、装置制御系の運用に適しているため。|
+| 選定理由 | カメラ制御、画像解析ローカル装置連携を同一端末上で完結でき、装置制御系の運用に適しているため。|
 | 制約 | Windows 前提、x86/x64 構成差異への配慮が必要であり、外部DLL 、実機接続環境依存する。|
 
 ---
@@ -122,7 +122,7 @@ flowchart LR
 
 | No. | アプリケーション名 | 区分 | 主な役割 | 利用者/利用部門 | 備考 |
 |-----|--------------------|------|----------|------------------|------|
-| 1 | CAS | 業務アプリケーション | 撮影条件及び撮影の実行指示、画像処理、補正値算出、Controller 連携、結果表示を行う。 | オペレータ | WPF アプリケーション。システムの中核。 |
+| 1 | CAS | 業務アプリケーション | 撮影条件及び撮影の実行指示、画像解析、補正値算出、Controller 連携、結果表示を行う。 | オペレータ | WPF アプリケーション。システムの中核。 |
 | 2 | AlphaCameraController | 補助アプリケーション | カメラ接続、撮影、オートフォーカス、ライブビュー実行を行う。 | CAS から間接利用 | 通知領域常駐型。CAS から別プロセス起動される。 |
 | 3 | CameraControl | 共通ライブラリ | CameraControllerSharp を利用した接続、設定変更、撮影、ライブビュー制御を提供する。 | AlphaCameraController から利用 | CameraControllerSharp を参照し、動的ロードされる。 |
 | 4 | CameraDataClass | 共通ライブラリ | 撮影条件、AF エリア、座標、制御データの共通クラスを提供する。 | CAS、AlphaCameraController、CameraControl | XML シリアライズ対象データを保持する。 |
@@ -154,7 +154,7 @@ flowchart LR
 |--------------------|--------|--------|----------|--------|--------|------|
 | CAS | CAS-01 | 設定管理機能 | 測定条件、対象機種、保存先、各種動作条件を設定・保持する。 | オペレータ | 高 | Functions/Configuration.cs、WindowSetting.xaml などに対応。 |
 | CAS | CAS-02 | Controller 接続制御機能 | Controller への接続、対象選択、パターン表示実行、補正値送信を行う。 | オペレータ | 高 | Functions/Control.cs、関連 Window 群に対応。 |
-| CAS | CAS-03 | Cabinet/Unit 情報管理機能 | Cabinet 構成、Unit 情報、対象範囲、関連情報を管理する。 | オペレータ | 高 | WindowCabinetInfo、WindowUnitInfo などを含む。 |
+| CAS | CAS-03 | Cabinet/Cabinet 情報管理機能 | Cabinet 構成、Cabinet 情報、対象範囲、関連情報を管理する。 | オペレータ | 高 | WindowCabinetInfo、WindowUnitInfo などを含む。 |
 | CAS | CAS-04 | カメラ連携制御機能 | AlphaCameraController と連携し、撮影条件設定、撮影実行、ライブビュー、AF 制御を行う。 | オペレータ | 高 | Functions/UfCamera.cs、Functions/GapCamera.cs に対応。 |
 | CAS | CAS-05 | 画像取得機能 | カメラ撮影画像を取得し、解析対象データとして保存・読込する。 | オペレータ | 高 | RAW/JPG 画像の取得・保存を含む。 |
 | CAS | CAS-06 | 画像変換・前処理機能 | 画像変換、位置合わせ、解析前の整形処理を行う。 | システム | 高 | Functions/TransformImage.cs、EstimateCameraPos.cs に対応。 |
@@ -180,7 +180,7 @@ CAS
 
 #### 機能関連図
 
-CAS の主要機能関連を以下に示す。オペレータ操作を起点として、設定管理、内蔵パターン表示、Controller 連携、カメラ連携、画像処理、補正値算出が連続して動作する構成である。
+CAS の主要機能関連を以下に示す。オペレータ操作を起点として、設定管理、内蔵パターン表示、Controller 連携、カメラ連携、画像解析、補正値算出が連続して動作する構成である。
 
 ```mermaid
 flowchart TD
@@ -202,9 +202,9 @@ flowchart TD
     CameraControl --> Camera["カメラ"]
     Camera --> ImageData[(撮影画像データ)]
 
-    CameraPos --> ImageProcessCameraPos["カメラ位置画像処理"]
-    UfAdjust --> ImageProcessUf["U/F 調整画像処理"]
-    GapAdjust --> ImageProcessGap["目地補正画像処理"]
+    CameraPos --> ImageProcessCameraPos["カメラ位置画像解析"]
+    UfAdjust --> ImageProcessUf["U/F 調整画像解析"]
+    GapAdjust --> ImageProcessGap["目地補正画像解析"]
     ImageData --> ImageProcessCameraPos
     ImageData --> ImageProcessUf
     ImageData --> ImageProcessGap
@@ -238,7 +238,7 @@ flowchart TD
 
 | 項目 | 内容 |
 |------|------|
-| 機能間連携の要点 | オペレータは画面操作の実行指示を起点として、カメラ位置合わせ、U/F 調整、目地補正を実行する。各調整機能は必要に応じて表示パターン機能を介して Controller に表示実行をし、同時にカメラ制御機能から AlphaCameraController 、CameraControl を経由して カメラを制御して撮影画像データを取得する。取得した撮影画像は画像処理で解析され、カメラ位置データ、U/F 調整データ、U/F 計測データ、目地補正データ、目地計測データへ変換される。U/F 調整データと目地補正データは調整データ転送機能を通じて Controller に送信され、実行結果はログ・履歴・情報出力に反映される。|
+| 機能間連携の要点 | オペレータは画面操作の実行指示を起点として、カメラ位置合わせ、U/F 調整、目地補正を実行する。各調整機能は必要に応じて表示パターン機能を介して Controller に表示実行をし、同時にカメラ制御機能から AlphaCameraController 、CameraControl を経由して カメラを制御して撮影画像データを取得する。取得した撮影画像は画像解析で解析され、カメラ位置データ、U/F 調整データ、U/F 計測データ、目地補正データ、目地計測データへ変換される。U/F 調整データと目地補正データは調整データ転送機能を通じて Controller に送信され、実行結果はログ・履歴・情報出力に反映される。|
 | 前提条件 | CasSetting.bin に必要な設定情報が登録済みであり、CamCont.bin を含む制御ファイルの読み書きが可能であること。Controller 、Cabinet 、カメラが接続済みで、AlphaCameraController と CameraControl を含む関連実行モジュールが利用可能なこと。|
 | 制約 | カメラ制御は AlphaCameraController と CamCont.bin を用いたファイル連携に依存するため、別プロセス起動とファイルアクセスが正常に行える必要がある。U/F 調整および目地補正の解析結果は、内蔵パターン表示状態、撮影位置、設置環境条件、対象 Cabinet の状態に影響を受けるため、運用時には表示条件と撮影条件の標準化が必要である。 |
 
@@ -251,7 +251,7 @@ flowchart TD
 | 機能群 | 対応機能ID | 主な対象画面・モジュール |
 |------|------|------|
 | 設定管理・対象構成管理 | CAS-01, CAS-03 | Configuration、Data、WindowCabinetInfo、WindowUnitInfo |
-| カメラ連携・画像取得・画像処理 | CAS-04, CAS-05, CAS-06 | Uniformity(Camera)、Gap Correction(Camera)、Functions/UfCamera.cs、Functions/GapCamera.cs |
+| カメラ連携・画像取得・画像解析 | CAS-04, CAS-05, CAS-06 | Uniformity(Camera)、Gap Correction(Camera)、Functions/UfCamera.cs、Functions/GapCamera.cs |
 | 調整・補正値生成 | CAS-07, CAS-08 | Uniformity(Camera)、Gap Correction(Camera) |
 
 #### 2-2-1. 設定管理・対象構成管理
@@ -262,15 +262,15 @@ flowchart TD
 |------|------|
 | 機能ID | CAS-01, CAS-03 |
 | 機能名 | 設定管理・対象構成管理 |
-| 機能概要 | 実行条件、対象機種、保存先、Cabinet/Unit 構成など、U/F 調整・目地補正の前提となる設定情報を管理する。 |
+| 機能概要 | 実行条件、対象機種、保存先、Cabinet/Cabinet 構成など、U/F 調整・目地補正の前提となる設定情報を管理する。 |
 | 利用者 | オペレータ |
 | 起動契機 | Configuration / Data / 対象構成編集画面での操作 |
-| 入力 | 設定値、対象 Cabinet/Unit 情報 |
+| 入力 | 設定値、対象 Cabinet/Cabinet 情報 |
 | 出力 | CasSetting.xml、内部設定データ |
 | 前提条件 | 設定ファイル保存先にアクセス可能であること。 |
 | 事後条件 | 更新した設定が後続処理で利用可能となること。 |
 
-#### 2-2-2. カメラ連携・画像取得・画像処理
+#### 2-2-2. カメラ連携・画像取得・画像解析
 
 ##### 2-2-2-1. 機能概要
 
@@ -377,7 +377,7 @@ flowchart TD
 
 | アクション名 | 契機 | 処理内容 | 正常時 | 異常時 |
 |--------------|------|----------|--------|--------|
-| Controller 転送 | 画像処理終了 | 算出した U/F 調整値または目地補正値を Controller へ転送する | 補正値書込完了 | 通信異常を通知 |
+| Controller 転送 | 画像解析終了 | 算出した U/F 調整値または目地補正値を Controller へ転送する | 補正値書込完了 | 通信異常を通知 |
 
 ##### 2-2-3-3. 帳票仕様 / EUC ファイル仕様
 
@@ -417,7 +417,7 @@ flowchart TD
 | 設定データ（CasSetting.xml） | 実行条件、対象情報、保存先、動作パラメータを保持する。 | 永続（明示更新まで） | オペレータ、CAS | 起動時読込・保存時更新 |
 | カメラ制御データ（CamCont.bin） | CAS と AlphaCameraController 間で撮影条件、実行フラグ、結果状態を連携する。 | 実行中〜次回更新まで | CAS、AlphaCameraController | カメラ制御連携の中核データ |
 | 撮影画像データ | カメラから取得した画像（RAW/JPG 等）を保持する。 | 運用規定による | CAS | U/F 調整、目地補正の入力 |
-| U/F 調整値・目地補正値データ | 画像処理で算出した U/F 調整値、目地補正値を保持する。 | 実行履歴保持期間に準拠 | CAS | Controller 転送データ |
+| U/F 調整値・目地補正値データ | 画像解析で算出した U/F 調整値、目地補正値を保持する。 | 実行履歴保持期間に準拠 | CAS | Controller 転送データ |
 | 実行ログデータ | 実行結果、処理進捗、異常情報を保持する。 | 運用規定による | CAS | 障害解析トレース用 |
 
 #### ERD
@@ -426,7 +426,7 @@ flowchart TD
 
 ```mermaid
 erDiagram
-    CAPTURE_IMAGE }|--|| CORRECTION_VALUE : "画像処理結果"
+    CAPTURE_IMAGE }|--|| CORRECTION_VALUE : "画像解析結果"
     CORRECTION_VALUE ||--|| EXECUTION_LOG : "結果を記録"
 
     CAPTURE_IMAGE {
@@ -538,7 +538,7 @@ erDiagram
 
 | 項目 | 内容 |
 |------|------|
-| 機能配置方針 | オペレータ操作、内蔵パターン表示制御、画像処理、補正値算出、結果表示は CAS（MainWindow + Functions 配下）に集約する。カメラ制御は AlphaCameraController + CameraControl に分離し、CAS とは CamCont.bin を介して連携する。Controller への調整値転送は CAS から装置通信機能を通じて実行する。 |
+| 機能配置方針 | オペレータ操作、内蔵パターン表示制御、画像解析、補正値算出、結果表示は CAS（MainWindow + Functions 配下）に集約する。カメラ制御は AlphaCameraController + CameraControl に分離し、CAS とは CamCont.bin を介して連携する。Controller への調整値転送は CAS から装置通信機能を通じて実行する。 |
 | データ配置方針 | 設定・制御・結果・ログはローカルファイルとして管理する。設定は CasSetting.xml、カメラ制御連携は CamCont.bin、画像は撮影フォルダ、解析結果・ログは結果保存先に格納する。永続化はファイルベースで行い、実行時データはメモリ保持後に必要項目を保存する。 |
 | 配置上制約 | カメラ制御は別プロセス起動とファイル連携に依存するため、実行ユーザ権限で CamCont.bin および画像保存先への読み書き権限が必要である。Controller 連携にはネットワーク到達性が必要であり、実機未接続時は機能が制限される。 |
 
@@ -546,7 +546,7 @@ erDiagram
 
 | 機能ID | 機能名 | 配置先 | 理由 | 備考 |
 |--------|--------|--------|------|------|
-| CAS-07 | U/F 調整 | CAS/MainWindow、Functions/UfCamera.cs | オペレータ操作、画像処理、補正値生成、進捗表示を一体で実行するため。 | カメラ撮影は AlphaCameraController 経由 |
+| CAS-07 | U/F 調整 | CAS/MainWindow、Functions/UfCamera.cs | オペレータ操作、画像解析、補正値生成、進捗表示を一体で実行するため。 | カメラ撮影は AlphaCameraController 経由 |
 | CAS-08 | 目地補正 | CAS/MainWindow、Functions/GapCamera.cs | 目地計測、補正値算出、ROM 書込制御を統合して実行するため。 | 補正値転送は Controller 通信に依存 |
 | CAS-07/CAS-08 | 表示パターン・補正値反映 | CAS/Functions/Control.cs、Controller | 表示制御および補正値適用は装置通信と一体で管理する必要があるため。 | Controller 到達性が前提 |
 | ACC-01 | カメラ常駐監視 | AlphaCameraController/NotifyIconWrapper、MainWindow | カメラ接続維持と制御ファイル監視を CAS から分離するため。 | 通知領域常駐プロセス |

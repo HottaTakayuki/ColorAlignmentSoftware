@@ -1,4 +1,4 @@
-# CameraController.lib 基本設計書
+﻿# CameraController.lib 基本設計書
 
 | 項目 | 内容 |
 |------|------|

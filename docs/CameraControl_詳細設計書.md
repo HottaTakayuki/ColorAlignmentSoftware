@@ -1,4 +1,4 @@
-# CameraControl 詳細設計書
+﻿# CameraControl 詳細設計書
 
 | 項目 | 内容 |
 |------|------|
@@ -76,7 +76,7 @@ flowchart LR
 |----------|-------------------|----------------|----------|
 | 本体ライブラリ | CameraControl/ | CameraControl クラス | 上位アプリから動的ロードされるDLL |
 | 外部SDK | 実行フォルダ | CameraControllerSharp.dll | カメラデバイス制御本体（CameraController.lib 静的リンク済み） |
-| 画像処理ライブラリ | 実行フォルダ | OpenCvSharp.dll | ライブビュー画像解析（マーカー検出） |
+| 画像解析ライブラリ | 実行フォルダ | OpenCvSharp.dll | ライブビュー画像解析（マーカー検出） |
 | 共通データ定義 | 実行フォルダ | CameraDataClass.dll | ShootCondition/AfAreaSetting/MarkerPosition の型定義 |
 | 出力先 | 上位アプリ指定パス | 画像ファイル (jpg/arw/ライブビューjpg) | 上位アプリが撮影結果を参照するため外部パスに出力 |
 
