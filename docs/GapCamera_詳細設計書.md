@@ -80,7 +80,7 @@ flowchart LR
 
 | 配置区分 | 配置先パス/ノード | 配置モジュール | 配置理由 |
 |----------|-------------------|----------------|----------|
-| 実行モジュール | CAS/Functions/GapCamera.cs | MDL-GAP-001〜006 | 目地輝度比計測・目地補正処理を単一機能ファイルに集約しているため |
+| 実行モジュール | CAS/Functions/GapCamera.cs | MDL-GAP-001〜006 | Gap輝度比計測・Gap補正処理を単一機能ファイルに集約しているため |
 | 外部カメラ連携 | CameraControl.dll | Positioning/Measurement | 撮影・AF・ライブビューのため |
 | 外部制御連携 | Controller (SDCP) | ControllerWrite/BackupRestore | 補正値設定・Write・Reconfigのため |
 | ファイル永続化 | 測定フォルダ/任意XMLパス | Measurement/BackupRestore | 計測結果・補正値の保存/読込のため |
@@ -347,9 +347,9 @@ flowchart TD
     C --> D[ウインドウ画像取得]
     D --> E[Module端画像取得]
     E --> F[Top/Right画像取得]
-    F --> G[目地輝度スイング画像取得]
-    G --> H[目地輝度比算出エリア抽出]
-    H --> I[目地輝度比算出]
+    F --> G[Gap輝度スイング画像取得]
+    G --> H[Gap輝度比算出エリア抽出]
+    H --> I[Gap輝度比算出]
     I --> J[結果保存/XML保存]
 ```
 
@@ -431,9 +431,9 @@ flowchart TD
     C --> D[ウインドウ画像取得]
     D --> E[Module端画像取得]
     E --> F[Top/Right画像取得]
-    F --> G[目地輝度スイング画像取得]
-    G --> H[目地輝度比算出エリア抽出]
-    H --> I[目地輝度比算出]
+    F --> G[Gap輝度スイング画像取得]
+    G --> H[Gap輝度比算出エリア抽出]
+    H --> I[Gap輝度比算出]
     I --> J[結果保存/XML保存]
     J --> K[補正開始] --> L[計測結果/設定取得]
     L --> P[補正ループ実行]
@@ -469,7 +469,7 @@ flowchart TD
 | 項目 | 内容 |
 |------|------|
 | インタフェース名 | adjustGapRegAsync |
-| 概要 | 目地輝度比計測結果に基づく補正主処理 |
+| 概要 | Gap輝度比計測結果に基づく補正主処理 |
 | シグネチャ | `unsafe private void adjustGapRegAsync(List<UnitInfo> lstTgtUnit)` |
 | 呼出条件 | 補正開始ボタン |
 
@@ -786,8 +786,8 @@ sequenceDiagram
     end
     MEAS->>MEAS: 画像取得
     MEAS->>MEAS: 画像解析/データ抽出
-    MEAS->>ADJ: 目地輝度比通知
-    ADJ->>ADJ: 目地輝度補正値算出
+    MEAS->>ADJ: Gap輝度比通知
+    ADJ->>ADJ: Gap補正値算出
     ADJ->>CTRL: 補正値反映
     ADJ->>UI: 結果通知
 ```
@@ -795,7 +795,7 @@ sequenceDiagram
 
 ## 8. メソッド仕様
 
-### 8-1. UIイベント系メソッド
+### 8-1. UIイベント・位置合わせ系メソッド
 
 #### 8-1-1. btnGapCamBackup_Click
 
@@ -807,6 +807,71 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 保存先選択ダイアログ表示 | `SaveFileDialog` を初期化し、前回保存先（`Settings.Ins.GapCam.LastBackupFile`）を優先表示する。 |
+| 2 | 入力確定判定 | ユーザーが `OK` を選択した場合のみ後続処理を実行する。Cancel時は無処理終了。 |
+| 3 | 実行準備 | `tcMain.IsEnabled = false`、`actionButton` 実行、進捗ウィンドウ表示を行う。 |
+| 4 | バックアップ実行 | `Task.Run(() => backupGapRegAsync(path))` でXML書き出しを実行する。 |
+| 5 | 終了処理 | 成否メッセージ表示、進捗ウィンドウClose、サウンド再生、`releaseButton`、`tcMain.IsEnabled = true` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ファイルパス | 保存先パスが選択されていること | ダイアログを閉じて処理終了（エラーなし） |
+| 保存先 | 指定先へ書込み可能であること | 例外を捕捉しエラー通知、失敗終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `backupGapRegAsync` | Gap補正値のXMLバックアップ本体 | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗の表示 | 同期 |
+| `ShowMessageWindow` / `WindowMessage` | 異常/完了通知 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| バックアップ実行失敗 | `Exception` | `CAS Error!` ダイアログ | `status=false`、エラーメッセージ表示、UI復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant DLG as SaveFileDialog
+    participant PRG as WindowProgress
+    participant BAK as GapBackupRestoreService
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamBackup_Click
+    UI->>DLG: 保存先選択ダイアログ表示
+    alt Cancel
+        DLG-->>UI: キャンセル
+        UI-->>OP: 処理終了
+    else OK
+        DLG-->>UI: 保存先パス
+        UI->>UI: actionButton / tcMain無効化
+        UI->>PRG: 進捗表示
+        UI->>BAK: Task.Run(backupGapRegAsync)
+        alt 例外
+            BAK-->>UI: Exception
+            UI->>MSG: CAS Error表示
+        else 正常
+            BAK-->>UI: 完了
+        end
+        UI->>PRG: Close
+        UI->>MSG: Complete/Error表示
+        UI->>UI: releaseButton / tcMain有効化
+    end
+```
+
 #### 8-1-2. btnGapCamRestore_Click
 
 | 項目 | 内容 |
@@ -816,6 +881,75 @@ sequenceDiagram
 
 引数: `sender`, `e`  
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 読込ファイル選択 | `OpenFileDialog` を表示し、前回利用ファイルを初期値に設定する。 |
+| 2 | 入力確定判定 | `OK` 選択時のみ処理続行。Cancel時は無処理終了。 |
+| 3 | 実行準備 | `tcMain.IsEnabled = false`、`actionButton` 実行、進捗ウィンドウ表示を行う。 |
+| 4 | リストア実行 | 条件コンパイルにより実行先を切替える。`BulkSetCorrectValue` 有効時は `restoreBulkGapRegAsync`、無効時は `restoreGapRegAsync` を実行する。 |
+| 5 | 終了処理 | 成否メッセージ表示、進捗ウィンドウClose、サウンド再生、`releaseButton`、`tcMain.IsEnabled = true` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ファイル選択 | 読込元XMLが選択済みであること | ダイアログ終了で処理終了（エラーなし） |
+| ファイル実体 | XMLファイルが存在しアクセス可能であること | 例外を捕捉しエラー通知、失敗終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `restoreGapRegAsync` | 補正値復元（通常設定） | 非同期（`Task.Run`） |
+| `restoreBulkGapRegAsync` | 補正値復元（一括設定） | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗の表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| リストア実行失敗 | `Exception` | `CAS Error!` ダイアログ | `status=false`、エラーメッセージ表示、UI復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant DLG as OpenFileDialog
+    participant PRG as WindowProgress
+    participant RST as GapBackupRestoreService
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamRestore_Click
+    UI->>DLG: 読込ファイル選択
+    alt Cancel
+        DLG-->>UI: キャンセル
+        UI-->>OP: 処理終了
+    else OK
+        DLG-->>UI: XMLパス
+        UI->>UI: actionButton / tcMain無効化
+        UI->>PRG: 進捗表示
+        alt BulkSetCorrectValue有効
+            UI->>RST: Task.Run(restoreBulkGapRegAsync)
+        else BulkSetCorrectValue無効
+            UI->>RST: Task.Run(restoreGapRegAsync)
+        end
+        alt 例外
+            RST-->>UI: Exception
+            UI->>MSG: CAS Error表示
+        else 正常
+            RST-->>UI: 完了
+        end
+        UI->>PRG: Close
+        UI->>MSG: Complete/Error表示
+        UI->>UI: releaseButton / tcMain有効化
+    end
+```
 
 #### 8-1-3. btnGapCamRestoreBulk_Click
 
@@ -827,6 +961,71 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 読込ファイル選択 | `OpenFileDialog` で復元対象XMLを選択する。 |
+| 2 | 実行準備 | `tcMain.IsEnabled = false`、`actionButton` 実行、進捗ウィンドウ表示を行う。 |
+| 3 | 一括復元実行 | `Task.Run(() => restoreBulkGapRegAsync(path))` で一括復元処理を実行する。 |
+| 4 | 成否判定 | 例外有無で `status` を更新し、完了メッセージを切替える。 |
+| 5 | 終了処理 | 進捗ウィンドウClose、サウンド再生、`releaseButton`、`tcMain.IsEnabled = true` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ファイル選択 | 読込元XMLが選択済みであること | ダイアログ終了で処理終了（エラーなし） |
+| ファイル実体 | XMLファイルが存在しアクセス可能であること | 例外を捕捉しエラー通知、失敗終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `restoreBulkGapRegAsync` | 補正値復元（一括設定） | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗の表示 | 同期 |
+| `WindowMessage` | 完了/失敗通知 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| 一括復元失敗 | `Exception` | `CAS Error!` ダイアログ | `status=false`、失敗通知、UI復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant DLG as OpenFileDialog
+    participant PRG as WindowProgress
+    participant RST as GapBackupRestoreService
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamRestoreBulk_Click
+    UI->>DLG: 読込ファイル選択
+    alt Cancel
+        DLG-->>UI: キャンセル
+        UI-->>OP: 処理終了
+    else OK
+        DLG-->>UI: XMLパス
+        UI->>UI: actionButton / tcMain無効化
+        UI->>PRG: 進捗表示
+        UI->>RST: Task.Run(restoreBulkGapRegAsync)
+        alt 例外
+            RST-->>UI: Exception
+            UI->>MSG: CAS Error表示
+        else 正常
+            RST-->>UI: 完了
+        end
+        UI->>PRG: Close
+        UI->>MSG: Complete/Error表示
+        UI->>UI: releaseButton / tcMain有効化
+    end
+```
+
 #### 8-1-4. tbtnGapCamSetPos_Click
 
 | 項目 | 内容 |
@@ -837,7 +1036,184 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
-#### 8-1-5. timerGapCam_Tick
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期設定 | 操作音再生、LEDモデルに応じた測定レベル設定、カメラ種別に応じた撮影条件設定を行う。 |
+| 2 | ON時の対象検証 | `tbtnGapCamSetPos.IsChecked == true` の場合に `CheckSelectedUnits(..., out m_lstCamPosUnits, true)` を実行し、対象妥当性を確認する。 |
+| 3 | ON時のカメラ位置合わせ準備 | 画質設定対象コントローラ選定、ユーザー設定退避、調整設定適用、AF実行、`SetCamPosTarget` 実行を行う。 |
+| 4 | ON時の表示遷移 | `tcGapCamView.SelectedIndex = 1` へ切替え、`timerGapCam.Enabled = true` で周期更新を開始する。 |
+| 5 | OFF時処理 | OFF遷移時は `txtbStatus.Text = "Done."` を設定し、周期停止後の復帰処理は他経路（Tick内例外処理や開始側停止処理）で実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象選択 | 位置合わせ対象Cabinetが矩形で選択されていること | エラー表示、トグルOFF、`tcGapCamView=0` で終了 |
+| カメラ/制御系 | AF、設定反映、内部信号出力が可能であること | 例外捕捉後に設定復帰と信号停止を実行して終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckSelectedUnits` | 位置合わせ対象の妥当性検証 | 同期 |
+| `getUserSettingSetPos` / `setAdjustSettingSetPos` | 位置合わせ用画質設定の退避・適用 | 同期 |
+| `AutoFocus` | AF実行 | 同期 |
+| `SetCamPosTarget` | 目標位置マーカー生成 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| 対象検証失敗 | `CheckSelectedUnits` 例外 | `CAS Error!` ダイアログ | トグルOFF、タブ0へ復帰 |
+| 位置合わせ準備失敗 | `Exception` | `CAS Error!` ダイアログ | ThroughMode解除、ユーザー設定復元、内部信号OFF |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant VAL as CheckSelectedUnits
+    participant CAM as CameraControl
+    participant POS as SetCamPosTarget
+    participant TMR as timerGapCam
+    participant MSG as MessageWindow
+
+    OP->>UI: tbtnGapCamSetPos_Click
+    alt トグルON
+        UI->>VAL: CheckSelectedUnits(...)
+        alt 検証NG
+            VAL-->>UI: Exception
+            UI->>MSG: CAS Error表示
+            UI->>UI: トグルOFF / タブ0へ復帰
+        else 検証OK
+            UI->>CAM: 設定退避・調整設定・AutoFocus
+            UI->>POS: SetCamPosTarget
+            UI->>UI: タブ1へ切替
+            UI->>TMR: Enabled=true
+        end
+    else トグルOFF
+        UI->>UI: txtbStatus = Done.
+    end
+```
+
+#### 8-1-5. SetCamPosTarget
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `void SetCamPosTarget(ImageType_CamPos imageType = ImageType_CamPos.LiveView, bool log = false, List<UnitInfo> lstUnit = null, double zDistanceSpec = 0)` |
+| 概要 | 選択された補正対象 Unit の配置から 3D→2D 透視変換を用いてカメラ位置を決定し、撮影時の画像座標範囲・Z距離チェック・はみ出し判定を実行する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | imageType | ImageType_CamPos | N | 撮影画像タイプ（`LiveView` or `JPEG`）、内部状態 `m_ImageType_CamPos` へ記録 |
+| 2 | log | bool | N | ログ出力を有効にするかのフラグ（デバッグ用） |
+| 3 | lstUnit | List<UnitInfo> | N | Z距離・はみ出しチェック対象の Unit リスト（null 時はスキップ） |
+| 4 | zDistanceSpec | double | N | 許容最大 Z 距離の仕様値（0 時は遠すぎチェックをスキップ） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力画像タイプ記録 | `m_ImageType_CamPos = imageType` を設定。`imageType == LiveView` 時は `CameraParameter(f=16.0, SensorResH=1024, SensorResV=680)`、`JPEG` 時は `CameraParameter(f=16.0, SensorResH=3008, SensorResV=2000)` を選択する。 |
+| 2 | 対象Unit範囲計算 | `m_lstCamPosUnits` を走査して X/Y の最小値・最大値から `startX/endX/startY/endY` を算出し、Cabinet 枚数 `m_CabinetXNum_CamPos / m_CabinetYNum_CamPos` を決定する。 |
+| 3 | LEDモデル判定 | `allocInfo.LEDModel`（P12 or P15）に応じて Cabinet/Module サイズ `m_CabinetDx/Dy`、`m_ModuleDx/Dy` を設定、モジュール数 `m_ModuleXNum / m_ModuleYNum` を計算する。 |
+| 4 | 撮像素子有効範囲設定 | ユーザー設定 `Settings.Ins.GapCam.CamPos_SizeMin/Max` に応じた撮影倍率を定義し、`tgtCamPos_canUse`（各隅の有効範囲座標）を設定する。 |
+| 5 | Cabinet座標と高さ計算 | `allocInfo.lstUnits[startX][startY]` から Cabinet 幅/高さを取得、対象 Wall の垂直サイズ・オフセットを計算、`InstallationWallBottomHeight`・`TargetWallCenterHeight`・`CameraPosHeight` を決定する。 |
+| 6 | 3D→2D変換設定 | 補正対象 Cabinet の4隅の 3D座標を 25%・75% 位置で取得し、`TransformImage` オブジェクトへ登録、カメラパラメータ・平行移動・回転（あおり角度 `tiltAngle`）を設定する。 |
+| 7 | 基準撮影座標計算 | `transform.Calc()` を実行して 3D→2D 変換を行い、`tgtCamPos`（TopLeft/TopRight/BottomRight/BottomLeft の画像座標）に結果を格納する。 |
+| 8 | 防抖動判定 | 撮影領域の横/縦サイズが撮像素子の 30% 未満の場合、`m_PreventionHanting = true` を設定する。 |
+| 9 | 規格撮影座標計算 | `CamPos_SizeMin/Max` に応じた Z距離で再度 `transform.Calc()` を実行し、横線長・縦線長を `tgtCamPos_HorLineSpec / tgtCamPos_VerLineSpec` へ格納する。 |
+| 10 | Z距離チェック初期化 | 補正対象 Unit が存在する場合、各Unit の 3D 頂点から最大・最小 Z距離を計算し、後段のチェック用に `longestZ`・`shortestZ` を初期化する。 |
+| 11 | Z距離チェック実行 | `lstUnit != null` 時、各Unit について最大 Z距離が `zDistanceSpec` を超えないか、最小 Z距離が `m_WorkDistance * 0.86` 未満でないかをチェックし、違反時は例外を送出する。 |
+| 12 | 撮影エリア内チェック | 補正対象Unit の変換結果が `tgtCamPos_canUse` 内に完全に収まっていることをチェックし、はみ出しがある場合は例外を送出する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `m_lstCamPosUnits.Count > 0` であること | `tgtCamPos = null` を設定して return |
+| LEDモデル | `allocInfo.LEDModel` が P12 または P15 であること | 処理スキップ（`tgtCamPos = null`） |
+| 座標情報 | `allocInfo.lstUnits[x][y].CabinetPos` が有効であること | 3D→2D変換で異常終了 |
+| Z距離仕様 | `zDistanceSpec > 0` または `lstUnit != null` であること | チェック項目を条件分岐で選別 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_ImageType_CamPos` | 撮影画像タイプを記録 | 手順1 |
+| `tgtCamPos` | 補正対象 Cabinet の撮影画像座標（4隅）を更新 | 手順7 |
+| `tgtCamPos_canUse` | 撮像素子の有効範囲座標を更新 | 手順4 |
+| `tgtCamPos_HorLineSpec / VerLineSpec` | 仕様書所定の倍率別に計算した横/縦線長を更新 | 手順9 |
+| `m_PreventionHanting` | 防抖動フラグを更新 | 手順8 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `imageType == LiveView / JPEG` | カメラパラメータ（解像度）を切り替える。 |
+| `allocInfo.LEDModel == P12 or P15` | Cabinet/Module サイズと幾何係数 `k` を設定する。 |
+| `NO_CONTROLLER` | 幾何係数 `k` を HP224 規格に合わせて計算、座標をスケーリングする。 |
+| `cameraPosDefault == true` | `CameraPosHeight = TargetWallCenterHeight`（デフォルト高さ）を使用。 |
+| `cameraPosDefault == false` | `CameraPosHeight`・`InstallationWallBottomHeight` をユーザー設定値から取得。 |
+| `lstUnit != null` | Z距離・はみ出しチェックを実行する（null時スキップ）。 |
+| `TempFile` | 中間結果（Cabinet 座標・画像座標のCSV）をファイル出力する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `SetCabinetPos` | 対象Unit の Cabinet 3D座標を計算 | 同期 |
+| `MoveCabinetPos` | 平行移動・回転後の Cabinet 座標を更新 | 同期 |
+| `TransformImage.Calc()` | 3D→2D 透視変換を実行 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Z距離が長すぎ | `longestZ > zDistanceSpec` 判定 | Exception 送出 | 撮影設定見直し要求 |
+| Z距離が短すぎ | `shortestZ < m_WorkDistance * 0.86` 判定 | Exception 送出 | 撮影設定見直し要求 |
+| 撮影エリアからはみ出し | `imageXMin/Max, imageYMin/Max` との比較 | Exception 送出 | Cabinet 選択や高さ調整を要求 |
+| 座標計算失敗 | `TransformImage.Calc()` 下位例外 | 呼出元へ再送出 | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as measure/setpos
+    participant S as SetCamPosTarget
+    participant T as TransformImage
+    participant C as Cabinet 3D calc
+
+    M->>S: SetCamPosTarget(imageType, log, lstUnit, zDistanceSpec)
+    S->>S: 画像タイプ・LED モデル・カメラパラメータ設定
+    S->>C: SetCabinetPos + Unit 範囲計算
+    S->>S: TargetWall 高さ・カメラ高さ計算
+    S->>T: 3D座標登録 + 変換パラメータ設定
+    S->>T: Calc（基準撮影座標）→ tgtCamPos
+    S->>T: Calc × 2（SizeMin/Max）→ HorLineSpec/VerLineSpec
+    alt lstUnit != null
+        S->>C: 各Unit の Z距離チェック
+        alt 長すぎ or 短すぎ
+            S-->>M: Exception（Z距離不適切）
+        end
+        S->>S: 画像座標はみ出しチェック
+        alt はみ出しあり
+            S-->>M: Exception（エリア外）
+        end
+    end
+    S-->>M: カメラ位置設定完了
+```
+
+#### 8-1-6. timerGapCam_Tick
 
 | 項目 | 内容 |
 |------|------|
@@ -847,7 +1223,62 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
-#### 8-1-6. btnGapCamMeasStart_Click
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | タイマ再入防止 | `CameraPosition` 有効時は先頭で `timerGapCam.Enabled = false` とし、重複実行を防止する。 |
+| 2 | 位置合わせ更新 | `AdjustCameraPosition`（または旧系 `SetPosMain`）を呼び出し、ライブ表示とガイド評価を更新する。 |
+| 3 | 例外時の設定復帰 | ThroughMode解除、ユーザー設定復元、内部信号OFFを実行する。 |
+| 4 | 位置合わせ停止 | タイマ停止、トグルOFF、`tbtnGapCamSetPos_Click` 呼び出しで停止遷移を確定する。 |
+| 5 | エラー通知 | `CAS Error!` ダイアログを表示する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 位置合わせ状態 | `tbtnGapCamSetPos` がONで周期更新対象が有効であること | 例外時に停止処理へ遷移 |
+| 画像入力/制御系 | ライブビュー取得と制御コマンド実行が可能であること | 例外時に設定復帰し停止 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `AdjustCameraPosition` / `SetPosMain` | 位置合わせ更新本体 | 同期 |
+| `SetThroughMode` / `setUserSettingSetPos` | 例外時の設定復帰 | 同期 |
+| `stopIntSig` | 内部信号停止 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| 位置合わせ更新例外 | `Exception` | `CAS Error!` ダイアログ | 設定復帰、停止遷移、トグルOFF |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TMR as timerGapCam
+    participant UI as GapCameraUIController
+    participant POS as AdjustCameraPosition/SetPosMain
+    participant SET as CameraSettingRestore
+    participant MSG as MessageWindow
+
+    TMR->>UI: timerGapCam_Tick
+    UI->>TMR: 再入防止のため一時停止
+    UI->>POS: 位置合わせ更新
+    alt 更新例外
+        POS-->>UI: Exception
+        UI->>SET: ThroughMode解除 / 設定復帰 / 内部信号OFF
+        UI->>UI: トグルOFF / 停止遷移
+        UI->>MSG: CAS Error表示
+    else 正常
+        POS-->>UI: 更新完了
+    end
+```
+
+#### 8-1-7. btnGapCamMeasStart_Click
 
 | 項目 | 内容 |
 |------|------|
@@ -857,7 +1288,124 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
-#### 8-1-7. btnGapCamAdjStart_Click
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 二重起動抑止付き開始処理 | `actionButton` を呼び出し、計測開始状態へ遷移する。 |
+| 2 | 対象Cabinet検証 | `CheckSelectedUnits(aryUnitGapCam, out lstTgtUnit, true, out m_lstCamPosUnits, true)` を実行し、選択不備・矩形不成立を検出する。 |
+| 3 | 進捗ウィンドウ初期化 | `WindowProgress("Measurement Gap Progress", 180, 400, TAbortType.Measurement)` を表示し、開始メッセージを出力する。 |
+| 4 | 位置合わせモード停止 | `tbtnGapCamSetPos` または `timerGapCam` が有効な場合、位置合わせを停止して通常設定へ復帰する。必要時は待機フラグを立てる。 |
+| 5 | 画面排他・表示切替 | `tcMain.IsEnabled = false`、`clearGapResult(DispType.Measure)`、`tcGapCamView.SelectedIndex = 4` を実行し、計測画面へ遷移する。 |
+| 6 | 計測作業ディレクトリ準備 | `m_CamMeasPath` を日時ベースで生成し、未存在時はディレクトリを作成する。 |
+| 7 | 進捗タイマ開始 | `initialGapCameraMeasurementProcessSec` で概算秒数を算出し、残り時間タイマを開始する。 |
+| 8 | 計測主処理の非同期実行 | `Task.Run(() => measureGapAsync(lstTgtUnit))` を実行する。`finally` で ThroughMode 解除・ユーザー設定復元を必ず実施する。 |
+| 9 | 例外ハンドリング | `CameraCasUserAbortException` は中断扱い（Abort通知）、その他例外はエラー扱い（CAS Error通知）とし、`status` を失敗に設定する。 |
+| 10 | 終了処理 | 進捗タイマ停止、完了/失敗メッセージ表示、必要時 `dispGapResult(true)`、進捗ウィンドウClose、サウンド再生、`releaseButton`、`tcMain.IsEnabled = true` を実行する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象選択 | 計測対象Cabinetが選択済みで矩形成立していること | 例外メッセージ表示後、`tcGapCamView.SelectedIndex = 0` に戻して処理終了 |
+| 位置合わせ状態 | 計測開始時に位置合わせ更新処理が停止可能であること | 停止/復帰失敗時はエラー表示して処理終了 |
+| 出力先 | `m_CamMeasPath` 配下の保存先が作成可能であること | 作成不可時は例外として失敗終了 |
+
+UI状態遷移
+
+| タイミング | `tcMain.IsEnabled` | `tcGapCamView.SelectedIndex` | `winProgress` |
+|------------|--------------------|------------------------------|---------------|
+| 開始前 | true | 現在値 | 非表示 |
+| 計測開始直後 | false | 4（計測ページ） | 表示（残り時間タイマ開始） |
+| 正常終了 | true | 4（結果表示継続） | Close |
+| 異常/中断終了 | true | 4（失敗結果表示あり） | Close |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckSelectedUnits` | 対象Cabinet妥当性検証 | 同期 |
+| `tbtnGapCamSetPos_Click` | 位置合わせ停止遷移 | 同期 |
+| `measureGapAsync` | Gap計測主処理（撮像・解析・保存） | 非同期（`Task.Run`） |
+| `SetThroughMode` / `setUserSetting` | カメラ設定の通常復帰 | 同期（`finally`で保証） |
+| `dispGapResult` | 失敗時結果表示更新 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| ユーザー中断 | `CameraCasUserAbortException` | `Abort!` ダイアログ | `status=false`、`winProgress.Operation=None`、UI復帰 |
+| 業務/システム例外 | `Exception` | `CAS Error!` ダイアログ | `status=false`、失敗結果表示、UI復帰 |
+| 事前検証エラー | `CheckSelectedUnits` の例外 | `CAS Error!` ダイアログ | タブ復帰、ボタン解放、処理未実行で終了 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant VAL as CheckSelectedUnits
+    participant POS as PositioningControl
+    participant PRG as WindowProgress
+    participant MEAS as GapMeasurementEngine
+    participant SET as CameraSettingRestore
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamMeasStart_Click
+    UI->>UI: actionButton(Measurement Gap Start.)
+    UI->>VAL: CheckSelectedUnits(...)
+
+    alt 対象選択NG
+        VAL-->>UI: Exception
+        UI->>MSG: CAS Error表示
+        UI->>UI: tcGapCamView=0 / releaseButton
+        UI-->>OP: 処理終了
+    else 対象選択OK
+        UI->>PRG: 進捗Window生成・表示
+        UI->>PRG: Start Measurement表示
+
+        alt 位置合わせ中
+            UI->>POS: timer停止 / tbtn OFF
+            UI->>POS: tbtnGapCamSetPos_Click
+            UI->>POS: SetThroughMode(false)
+            UI->>POS: setUserSettingSetPos(userSetting)
+        end
+
+        UI->>UI: tcMain無効化 / 結果クリア / タブ切替
+        UI->>UI: 計測フォルダ作成・saveLog
+        UI->>PRG: 残り時間タイマ開始
+
+        UI->>MEAS: Task.Run(measureGapAsync)
+        alt ユーザー中断
+            MEAS-->>UI: CameraCasUserAbortException
+            UI->>MSG: Abort表示
+            UI->>UI: status=false
+        else 実行例外
+            MEAS-->>UI: Exception
+            UI->>MSG: CAS Error表示
+            UI->>UI: status=false
+        else 正常終了
+            MEAS-->>UI: 完了
+        end
+
+        UI->>SET: finallyでThroughMode解除
+        UI->>SET: finallyでユーザー設定復元
+
+        UI->>PRG: 残り時間タイマ停止・Close
+        alt status=true
+            UI->>MSG: Complete表示
+        else status=false
+            UI->>UI: dispGapResult(true)
+            UI->>MSG: Error表示
+        end
+
+        UI->>UI: releaseButton / tcMain有効化
+        UI-->>OP: 応答完了
+    end
+```
+
+#### 8-1-8. btnGapCamAdjStart_Click
 
 | 項目 | 内容 |
 |------|------|
@@ -867,7 +1415,87 @@ sequenceDiagram
 引数: `sender`, `e`  
 返り値: なし（void）
 
-#### 8-1-8. btnGapCamRomStart_Click
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 開始処理・対象検証 | `actionButton` 実行後、`CheckSelectedUnits(..., true, out m_lstCamPosUnits, true)` で対象妥当性を確認する。 |
+| 2 | 進捗UI初期化 | `WindowProgress("Adjustment Gap Progress", 180, 400, TAbortType.Adjustment)` を表示し、計測フォルダ作成と開始ログ出力を行う。 |
+| 3 | 位置合わせ停止 | 位置合わせ中はタイマ停止・トグルOFF・`tbtnGapCamSetPos_Click` 実行で停止し、必要に応じて設定復帰を行う。 |
+| 4 | 画面排他・表示準備 | `tcMain.IsEnabled = false`、結果表示クリア、`tcGapCamView.SelectedIndex = 2` へ遷移する。 |
+| 5 | 補正主処理実行 | 調整回数・評価フラグを読込み、`Task.Run(() => adjustGapRegAsync(lstTgtUnit))` を実行する。 |
+| 6 | finally復帰 | `m_lstUserSetting != null` の場合、ThroughMode解除とユーザー設定復元を必ず実行する。 |
+| 7 | 終了処理 | 成否メッセージ表示、必要時 `dispGapResult(true)`、`btnGapCamRomStart.IsEnabled` 制御、`tcMain.IsEnabled = true` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象選択 | 補正対象Cabinetが矩形で選択されていること | エラー表示、タブ0へ復帰、ボタン解放で終了 |
+| 設定入力 | `comboBoxGapCameraNumOfAdjustment` が数値変換可能であること | 例外扱いで失敗終了 |
+| 出力先 | 計測フォルダ作成が可能であること | 例外扱いで失敗終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `adjustGapRegAsync` | Gap補正主処理 | 非同期（`Task.Run`） |
+| `initialGapCameraAdjustmentProcessSec` | 進捗見積り時間算出 | 同期 |
+| `SetThroughMode` / `setUserSetting` | finallyでの設定復帰 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| ユーザー中断 | `CameraCasUserAbortException` | `Abort!` ダイアログ | `status=false`、`winProgress.Operation=None`、UI復帰 |
+| 業務/システム例外 | `Exception` | `CAS Error!` ダイアログ | `status=false`、失敗結果表示、UI復帰 |
+
+条件分岐仕様（`Auto_WriteData`）
+
+| 条件 | 挙動 |
+|------|------|
+| `Auto_WriteData` 有効 | 補正完了後に確認ダイアログを表示し、Yes選択時は `romSaveAsync` を続行実行する。 |
+| `Auto_WriteData` 無効 | 補正完了メッセージを表示し、`Write Data` ボタン押下待ちに遷移する。 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant VAL as CheckSelectedUnits
+    participant PRG as WindowProgress
+    participant ADJ as GapAdjustmentEngine
+    participant ROM as GapControllerWriteService
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamAdjStart_Click
+    UI->>VAL: CheckSelectedUnits(...)
+    alt 検証NG
+        VAL-->>UI: Exception
+        UI->>MSG: CAS Error表示
+        UI-->>OP: 処理終了
+    else 検証OK
+        UI->>PRG: 進捗表示
+        UI->>ADJ: Task.Run(adjustGapRegAsync)
+        alt 中断/例外
+            ADJ-->>UI: Abort or Exception
+            UI->>MSG: Abort/CAS Error表示
+        else 正常
+            ADJ-->>UI: 補正完了
+            alt Auto_WriteData有効 and Yes
+                UI->>ROM: Task.Run(romSaveAsync)
+            else Auto_WriteData無効 or No
+                UI->>MSG: Write Data待ち案内
+            end
+        end
+        UI->>PRG: Close
+        UI->>UI: tcMain有効化
+    end
+```
+
+#### 8-1-9. btnGapCamRomStart_Click
 
 | 項目 | 内容 |
 |------|------|
@@ -876,6 +1504,73 @@ sequenceDiagram
 
 引数: `sender`, `e`  
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 開始処理 | `actionButton` を実行し、ROM書込み開始状態へ遷移する。 |
+| 2 | 位置合わせ停止 | `timerGapCam` 有効時は停止し、トグルOFFと `tbtnGapCamSetPos_Click` を呼び出して待機フラグを設定する。 |
+| 3 | 画面排他・対象検証 | `tcMain.IsEnabled = false` 後、`CheckSelectedUnits` で対象Cabinet妥当性を検証する。 |
+| 4 | 書込み実行 | `tcGapCamView.SelectedIndex = 3` へ遷移し、進捗ウィンドウ表示後に `Task.Run(() => romSaveAsync(lstTgtUnit))` を実行する。 |
+| 5 | 終了処理 | 成否メッセージ表示、必要時 `dispGapResult(true)`、進捗Close、`releaseButton`、`tcMain.IsEnabled = true` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象選択 | 書込み対象Cabinetが選択済みであること | エラー表示、タブ0へ復帰、ボタン解放、UI復帰 |
+| 前段処理 | 補正値がROM書込み可能な状態であること | `romSaveAsync` 側例外として失敗終了 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckSelectedUnits` | 書込み対象の妥当性検証 | 同期 |
+| `romSaveAsync` | ROM書込み主処理 | 非同期（`Task.Run`） |
+| `dispGapResult` | 失敗時表示更新 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| 対象検証エラー | `CheckSelectedUnits` 例外 | `CAS Error!` ダイアログ | タブ0復帰、ボタン解放、UI復帰 |
+| ROM書込み失敗 | `Exception` | `CAS Error!` ダイアログ | `status=false`、失敗表示、UI復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor OP as Operator
+    participant UI as GapCameraUIController
+    participant VAL as CheckSelectedUnits
+    participant PRG as WindowProgress
+    participant ROM as GapControllerWriteService
+    participant MSG as MessageWindow
+
+    OP->>UI: btnGapCamRomStart_Click
+    UI->>UI: actionButton / 必要時位置合わせ停止
+    UI->>VAL: CheckSelectedUnits(...)
+    alt 検証NG
+        VAL-->>UI: Exception
+        UI->>MSG: CAS Error表示
+        UI->>UI: タブ0復帰 / UI復帰
+    else 検証OK
+        UI->>PRG: 進捗表示
+        UI->>ROM: Task.Run(romSaveAsync)
+        alt 例外
+            ROM-->>UI: Exception
+            UI->>MSG: CAS Error表示
+            UI->>UI: dispGapResult(true)
+        else 正常
+            ROM-->>UI: 書込み完了
+            UI->>MSG: Complete表示
+        end
+        UI->>PRG: Close
+        UI->>UI: releaseButton / tcMain有効化
+    end
+```
 
 ### 8-2. 業務処理メソッド
 
@@ -894,6 +1589,101 @@ sequenceDiagram
 
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 計測状態初期化 | `m_GapStatus = GapStatus.Measure`、`m_AdjustCount = 0`、`clearGapResult(DispType.Measure)` を実行する。 |
+| 2 | 対象範囲算出・ログ出力 | `lstTgtUnit` からX/Y最小最大を算出し、対象Cabinet範囲をログ出力する。 |
+| 3 | 進捗・ワーク領域初期化 | `winProgress.SetWholeSteps(66)`、`lstGapCamCp` 初期化、OpenCvSharp DLL存在確認を行う。 |
+| 4 | 計測条件決定 | LEDモデルに応じて `m_MeasureLevel` を決定し、カメラ機種に応じて `m_ShootCondition` を設定する。 |
+| 5 | レイアウト幾何情報算出 | 対象Cabinetの行列数、Cabinet/Module寸法、Panel寸法を算出し、対象モデル外の場合は処理を終了する。 |
+| 6 | コントローラ準備 | 対象コントローラ抽出、Cabinet ON、ユーザー設定退避、調整設定適用、Layout情報OFFを実施する。 |
+| 7 | オートフォーカス実行 | 進捗更新後、チェッカ信号出力とAFを実行し、必要時はAF画像（ARW/バイナリ）を保存する。 |
+| 8 | 開始時カメラ姿勢取得 | `SetCamPosTarget` 後に `GetCameraPosition` を最大3回試行し、不適切姿勢時はエラーとする。 |
+| 9 | 撮影処理 | `captureGapImages(m_CamMeasPath)` を実行して必要画像を取得する。 |
+| 10 | 解析処理 | 中断不可状態へ遷移後、`calcGapGain(lstTgtUnit, m_CamMeasPath)` で補正計算用データを生成する。 |
+| 11 | 終了時カメラ姿勢取得 | 終了時姿勢を最大3回試行で取得し、不適切姿勢時はエラー扱いとする。 |
+| 12 | 設定復帰・表示更新 | ThroughMode解除、ユーザー設定復元、`dispGapResult()`、基準信号出力、ログ世代管理、完了ログ出力を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象一覧 | `lstTgtUnit` が有効で対象矩形が成立していること | 下位処理例外として呼出元へ送出 |
+| 実行環境 | OpenCvSharp DLL、カメラ、コントローラ通信が利用可能であること | 例外を送出し上位で異常終了 |
+| モデル定義 | LEDモデルがP12/P15系の想定モデルであること | 条件分岐で処理中断（早期return） |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_GapStatus` | `Measure` に設定 | 処理開始時 |
+| `m_AdjustCount` | `0` に初期化 | 処理開始時 |
+| `m_MeasureLevel` | LEDモデル別レベル値 | 計測条件決定時 |
+| `m_ShootCondition` | カメラ機種別撮影条件 | 計測条件決定時 |
+| `m_lstUserSetting` | 退避設定の一時保持/復帰後null化 | 設定退避時/復帰完了時 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckOpenCvSharpDll` | 解析ライブラリ事前検証 | 同期 |
+| `outputGapCamTargetArea_EdgeExpand` | 対象コントローラ抽出 | 同期 |
+| `getUserSetting` / `setAdjustSetting` / `setUserSetting` | 画質設定の退避・適用・復元 | 同期 |
+| `AutoFocus` | AF実行 | 同期 |
+| `SetCamPosTarget` / `GetCameraPosition` | カメラ位置基準設定・姿勢取得 | 同期 |
+| `captureGapImages` | 計測画像取得 | 同期 |
+| `calcGapGain` | 画像解析・補正値算出用データ生成 | 同期 |
+| `dispGapResult` | 計測結果表示更新 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | コントローラ設定変更・内部信号制御をスキップする。 |
+| `NO_CAP` | 実撮影/AF画像保存をスキップし、擬似待機中心の流れで進行する。 |
+| `appliMode == Developer` | カメラ位置不適合時も一部例外送出を抑止して継続可能。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| OpenCV・I/O・通信失敗 | 下位処理から `Exception` | 呼出元へ再送出 | 呼出元のcatch/finallyでUI復帰 |
+| ユーザー中断 | `CameraCasUserAbortException`（下位処理由来） | 呼出元へ再送出 | 呼出元でAbort通知 |
+| カメラ位置不適合 | 姿勢取得結果判定 | `Exception` 送出（Developerモード除く） | 計測中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamMeasStart_Click
+    participant MEAS as measureGapAsync
+    participant CTRL as Controller/SDCP
+    participant CAM as CameraControl
+    participant ANA as calcGapGain
+    participant DISP as GapResultView
+
+    UI->>MEAS: Task.Run(measureGapAsync(lstTgtUnit))
+    MEAS->>MEAS: 状態初期化・条件決定
+    MEAS->>CTRL: 対象抽出/電源ON/調整設定
+    MEAS->>CAM: AutoFocus
+    MEAS->>CAM: 開始時カメラ姿勢取得(最大3回)
+    alt 姿勢不適合(非Developer)
+        CAM-->>MEAS: NG
+        MEAS-->>UI: Exception
+    else 姿勢OK
+        CAM-->>MEAS: OK
+        MEAS->>CAM: captureGapImages
+        MEAS->>ANA: calcGapGain
+        MEAS->>CAM: 終了時カメラ姿勢取得(最大3回)
+        MEAS->>CTRL: ThroughMode解除/設定復帰
+        MEAS->>DISP: dispGapResult
+        MEAS-->>UI: 完了
+    end
+```
+
 #### 8-2-2. adjustGapRegAsync
 
 | 項目 | 内容 |
@@ -908,6 +1698,103 @@ sequenceDiagram
 | 1 | lstTgtUnit | List<UnitInfo> | Y | 計測済みの補正対象Cabinet一覧 |
 
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 補正状態初期化 | `m_GapStatus = GapStatus.Before`、`m_AdjustCount = 0`、表示クリア（Before/Result）を実行する。 |
+| 2 | 対象範囲算出・進捗初期化 | 対象Cabinet範囲をログ出力し、`winProgress.SetWholeSteps(64)` を設定する。 |
+| 3 | 補正条件決定 | OpenCV DLL確認、LEDモデル別 `m_MeasureLevel`、カメラ別 `m_ShootCondition`、レイアウト幾何情報を設定する。 |
+| 4 | コントローラ準備 | 対象コントローラ抽出、Cabinet ON、ユーザー設定退避、調整設定適用、Layout情報OFFを行う。 |
+| 5 | AF・開始姿勢取得 | AF実行後、`SetCamPosTarget` と `GetCameraPosition`（最大3回）で開始姿勢を検証する。 |
+| 6 | 初期撮影・初期解析 | 補正無効状態で基準画像撮影（`captureGapImages`）し、`calcGapGain` で初期偏差を算出する。 |
+| 7 | 初期結果保存 | `GapBeforeResult.xml` を保存し、結果表示へ切替える。 |
+| 8 | 補正ループ実行 | 最大 `m_MaxNumOfAdjustment` 回で、補正値計算・書込み・再撮影・再解析・CSV結果保存を実施する。 |
+| 9 | 規格判定 | 各辺の `GapGain` を `AdjustSpec`（またはZ距離仕様）で判定し、全点規格内で早期終了する。 |
+| 10 | 仕上げ撮影・最終保存 | 必要時に白画像を撮影し、`GapAdjustResult.xml` を保存する。 |
+| 11 | 設定復帰 | ThroughMode解除、ユーザー設定復元、信号出力復帰、ログ世代管理を実施する。 |
+| 12 | 結果確定 | `btnGapCamRomStart` を有効化し、評価結果をUIへ反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象一覧 | `lstTgtUnit` が有効で対象矩形が成立していること | 下位例外として呼出元へ送出 |
+| 実行環境 | カメラ撮影・SDCP通信・OpenCV解析が可能であること | 例外送出で補正中断 |
+| 調整設定 | `m_MaxNumOfAdjustment`、`m_EvaluateAdjustmentResult` が事前設定済みであること | 呼出元側で失敗扱い |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_GapStatus` | `Before` → `Result` へ遷移 | 補正前初期化時/各ループ終了時 |
+| `m_AdjustCount` | 0からループ回数を加算 | 補正ループ中 |
+| `lstGapCamCp` | 補正対象・計測結果・補正値を保持 | 初期解析後〜ループ終了 |
+| `lstModifiedUnits` | 書込み対象Unit一覧を保持 | 補正値反映時 |
+| `m_lstUserSetting` | 設定退避・復帰後null化 | 設定退避時/復帰完了時 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `captureGapImages` | 補正前/補正後の撮影 | 同期 |
+| `calcGapGain` | Gap輝度比解析 | 同期 |
+| `calcNewRegCell` | 新規補正値算出 | 同期 |
+| `setGapCellCorrectValue` / `setGapCvCellBulk` | 補正値反映（単発/一括） | 同期 |
+| `setGapCellCorrectValueForXML` | XML保存用値反映 | 同期 |
+| `GapCamCorrectionValue.SaveToXmlFile` | `GapBeforeResult.xml` / `GapAdjustResult.xml` 保存 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `m_EvaluateAdjustmentResult == false` | 補正値反映後の再測定を省略し、ループを早期終了する。 |
+| `BulkSetCorrectValue` | 初回補正時にModule単位一括書込みを優先する。 |
+| `Spec_by_Zdistance` | 判定閾値をCabinet位置別スペックに切替える。 |
+| `NO_CONTROLLER` / `NO_CAP` | 制御・撮影処理を一部スキップし、擬似処理中心で進行する。 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 撮影/解析/通信失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元で失敗通知とUI復帰 |
+| ユーザー中断 | `CameraCasUserAbortException` | 呼出元へ再送出 | 呼出元でAbort通知 |
+| カメラ位置不適合 | 姿勢取得判定 | 例外送出（Developerモード除く） | 補正中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamAdjStart_Click
+    participant ADJ as adjustGapRegAsync
+    participant CAM as CameraControl
+    participant ANA as calcGapGain
+    participant SDCP as ControllerWrite
+    participant FS as File(XML/CSV)
+
+    UI->>ADJ: Task.Run(adjustGapRegAsync(lstTgtUnit))
+    ADJ->>ADJ: 状態初期化・条件決定
+    ADJ->>CAM: AF/開始姿勢取得
+    ADJ->>CAM: captureGapImages
+    ADJ->>ANA: calcGapGain(初期)
+    ADJ->>FS: GapBeforeResult.xml保存
+    loop 補正ループ(最大回数)
+        ADJ->>SDCP: 補正値算出・反映
+        alt 結果評価有効
+            ADJ->>CAM: 再撮影
+            ADJ->>ANA: 再解析
+            ADJ->>FS: result/correctReg CSV保存
+        end
+        alt 全点規格内
+            ADJ-->>ADJ: 早期終了
+        end
+    end
+    ADJ->>FS: GapAdjustResult.xml保存
+    ADJ->>ADJ: 設定復帰・結果反映
+    ADJ-->>UI: 完了
+```
 
 #### 8-2-3. romSaveAsync
 
@@ -924,6 +1811,63 @@ sequenceDiagram
 
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 開始ログ出力 | `saveLog("Start ROM writing.")` を出力する。 |
+| 2 | ROM書込み実行 | `writeGapCellCorrectionValueWithReconfig()` でPanel OFF→Write→Reconfig→Panel ONを実施する。 |
+| 3 | 信号表示復帰 | `outputIntSigFlat` と `cmbxPatternGapCam` 更新で表示状態を補正後基準へ戻す。 |
+| 4 | 終了ログ出力 | `saveLog("Finish ROM writing.")` を出力する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 書込み対象 | `lstModifiedUnits` へ対象Unitが格納済みであること | Write実施数が不足し、結果不整合の可能性 |
+| 通信環境 | SDCP通信とReconfig実行が可能であること | 例外送出で呼出元へ失敗通知 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `winProgress` | 書込み進捗表示を更新 | `writeGapCellCorrectionValueWithReconfig` 内 |
+| `cmbxPatternGapCam.SelectedIndex` | 測定レベルに応じて更新 | 書込み後 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `writeGapCellCorrectionValueWithReconfig` | 実ROM書込み（Write+Reconfig） | 同期 |
+| `outputIntSigFlat` | 補正後表示信号へ復帰 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Write/Reconfig失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元で失敗表示・UI復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamRomStart_Click
+    participant ROM as romSaveAsync
+    participant WRT as writeGapCellCorrectionValueWithReconfig
+    participant CTRL as SDCP Controller
+
+    UI->>ROM: Task.Run(romSaveAsync)
+    ROM->>WRT: 書込み開始
+    WRT->>CTRL: Panel OFF
+    WRT->>CTRL: UnitごとWrite
+    WRT->>CTRL: Reconfig
+    WRT->>CTRL: Panel ON
+    WRT-->>ROM: 完了
+    ROM->>ROM: 表示パターン復帰
+    ROM-->>UI: 完了
+```
+
 #### 8-2-4. backupGapRegAsync
 
 | 項目 | 内容 |
@@ -938,6 +1882,75 @@ sequenceDiagram
 | 1 | path | string | Y | 保存先XMLパス |
 
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 出力リスト初期化 | `List<GapCamCorrectionValue>` を初期化する。 |
+| 2 | Step数設定 | LEDモデルに応じて進捗Stepを算出し、`winProgress.SetWholeSteps(step)` を設定する。 |
+| 3 | モデル依存寸法設定 | Cabinet/Module寸法とモジュール数をモデル別に決定する。 |
+| 4 | Unit走査 | 全Unitを走査し、有効Unitごとに `GapCamCorrectionValue` を生成する。 |
+| 5 | 補正値読出し | Cabinet補正値（条件付き）と全Module補正値を `getGapCvUnit` / `getGapCvCell` で取得する。 |
+| 6 | XML保存 | `GapCamCorrectionValue.SaveToXmlFile(path, lstGapCv)` で永続化する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 保存先 | `path` が有効な保存可能パスであること | 例外送出で呼出元へ失敗通知 |
+| 通信環境 | SDCP読出しコマンドが利用可能であること | 例外または不完全値でバックアップ失敗 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_ModuleXNum` / `m_ModuleYNum` | モジュール構成数を設定 | モデル依存寸法設定時 |
+| `winProgress` | 読出し進捗を更新 | Unit/Module読出し時 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `getGapCvUnit` | Cabinet補正値取得 | 同期 |
+| `getGapCvCell` | Module補正値取得 | 同期 |
+| `GapCamCorrectionValue.SaveToXmlFile` | XML保存 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `No_CabinetCorrectionValue` | Cabinet補正値取得をスキップする。 |
+| LEDモデル種別 | Step数およびモジュール構成数を切替える。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP読出し失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元でエラー通知 |
+| XML保存失敗 | ファイルI/O例外 | 呼出元へ再送出 | 部分データは破棄 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamBackup_Click
+    participant BAK as backupGapRegAsync
+    participant SDCP as Controller
+    participant FS as BackupXML
+
+    UI->>BAK: Task.Run(backupGapRegAsync(path))
+    BAK->>BAK: Step/モデル設定
+    loop 全Unit
+        BAK->>SDCP: getGapCvUnit(条件付き)
+        loop 全Module
+            BAK->>SDCP: getGapCvCell
+        end
+    end
+    BAK->>FS: SaveToXmlFile
+    BAK-->>UI: 完了
+```
 
 #### 8-2-5. restoreGapRegAsync
 
@@ -954,6 +1967,73 @@ sequenceDiagram
 
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | XML読込 | `GapCamCorrectionValue.LoadFromXmlFile(path, out lstGapCv)` を実行する。 |
+| 2 | Step数設定 | `countUnits()*13` で進捗Stepを設定する。 |
+| 3 | Unit反映 | Unit補正値（条件付き）と全Module補正値を `setGapCvUnit` / `setGapCvCell` で反映する。 |
+| 4 | 変更Unit記録 | 書込み対象を `lstModifiedUnits` へ蓄積する。 |
+| 5 | 書込み確定 | `writeGapCellCorrectionValueWithReconfig()` を実行してWrite/Reconfigを確定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力ファイル | `path` に有効なGap補正XMLが存在すること | 読込例外で処理中断 |
+| 通信環境 | SDCP設定・Write/Reconfigが可能であること | 例外送出で呼出元へ失敗通知 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstModifiedUnits` | 書込み対象Unit一覧を保持 | Unit反映時 |
+| `winProgress` | 復元進捗を更新 | Unit/Module反映時 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadFromXmlFile` | 補正値読込 | 同期 |
+| `setGapCvUnit` / `setGapCvCell` | Unit/Module補正値設定 | 同期 |
+| `writeGapCellCorrectionValueWithReconfig` | 書込み確定 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `No_CabinetCorrectionValue` | Unit補正値設定をスキップし、Cellのみ復元する。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| XML読込失敗 | `LoadFromXmlFile` 例外 | 呼出元へ再送出 | 処理中断 |
+| 設定/書込み失敗 | SDCP関連例外 | 呼出元へ再送出 | 一部反映の可能性あり |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamRestore_Click
+    participant RST as restoreGapRegAsync
+    participant FS as BackupXML
+    participant SDCP as Controller
+
+    UI->>RST: Task.Run(restoreGapRegAsync(path))
+    RST->>FS: LoadFromXmlFile
+    loop 各Cabinet
+        RST->>SDCP: setGapCvUnit(条件付き)
+        loop 各Module
+            RST->>SDCP: setGapCvCell
+        end
+    end
+    RST->>SDCP: writeGapCellCorrectionValueWithReconfig
+    RST-->>UI: 完了
+```
+
 #### 8-2-6. restoreBulkGapRegAsync
 
 | 項目 | 内容 |
@@ -969,75 +2049,776 @@ sequenceDiagram
 
 返り値: なし（void）
 
-### 8-3. SDCP設定・書込みメソッド
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | XML読込 | `GapCamCorrectionValue.LoadFromXmlFile(path, out lstGapCv)` を実行する。 |
+| 2 | Step数設定 | LEDモデルに応じたStep数を設定する（8または12系）。 |
+| 3 | 一括復元 | Unit補正値（条件付き）と全Module補正値を `setGapCvCellBulk` で反映する。 |
+| 4 | 変更Unit記録 | `lstModifiedUnits` へ対象Unitを蓄積する。 |
+| 5 | 書込み確定 | `writeGapCellCorrectionValueWithReconfig()` を実行して確定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力ファイル | `path` に有効なGap補正XMLが存在すること | 読込例外で処理中断 |
+| 通信環境 | Bulk設定コマンドおよびWrite/Reconfigが可能であること | 例外送出で呼出元へ失敗通知 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstModifiedUnits` | 書込み対象Unit一覧を保持 | Unit反映時 |
+| `winProgress` | 一括復元進捗を更新 | Module反映時 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadFromXmlFile` | 補正値読込 | 同期 |
+| `setGapCvCellBulk` | Module補正値一括設定 | 同期 |
+| `writeGapCellCorrectionValueWithReconfig` | 書込み確定 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `No_CabinetCorrectionValue` | Unit補正値設定をスキップする。 |
+| LEDモデル種別 | Step数計算とモジュール想定を切替える。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| XML読込失敗 | `LoadFromXmlFile` 例外 | 呼出元へ再送出 | 処理中断 |
+| 一括設定/書込み失敗 | SDCP関連例外 | 呼出元へ再送出 | 一部反映の可能性あり |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as btnGapCamRestoreBulk_Click
+    participant RST as restoreBulkGapRegAsync
+    participant FS as BackupXML
+    participant SDCP as Controller
+
+    UI->>RST: Task.Run(restoreBulkGapRegAsync(path))
+    RST->>FS: LoadFromXmlFile
+    loop 各Cabinet
+        RST->>SDCP: setGapCvUnit(条件付き)
+        loop 各Module
+            RST->>SDCP: setGapCvCellBulk
+        end
+    end
+    RST->>SDCP: writeGapCellCorrectionValueWithReconfig
+    RST-->>UI: 完了
+```
+
+#### 8-2-7. captureGapImages
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void captureGapImages(string measPath)` |
+| 概要 | Gap計測用の撮影シーケンスを実行し、解析用画像群を保存する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | measPath | string | Y | 画像保存先ディレクトリパス |
+
+返り値: なし（void）
+
+責務分担（パターン表示と撮影）
+
+| 項目 | 内容 |
+|------|------|
+| 本メソッドの責務 | 内蔵パターン表示（`outputIntSig*`、`outputGapCamTargetArea*`）、表示後待機、撮影シーケンス制御 |
+| `CaptureImage` の責務 | 撮影要求投入、保存完了待機、再試行（再接続） |
+| 呼出し順序 | 「パターン表示」→「`Thread.Sleep(PatternWait)`」→「`CaptureImage(...)`」 |
+| 備考 | パターン表示は撮影直前に都度実行し、画像ごとに表示条件を切り替える |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 対象Cabinet再取得 | `CheckSelectedUnits` をDispatcher経由で実行し、対象矩形を確定する。 |
+| 2 | 初期状態調整 | `MultiController` 条件時は半分タイル用フラグ（`m_bottomHalfTile`、`m_rightHalfTile`）を初期化する。 |
+| 3 | 映り込み事前検査 | 計測/補正前状態では `CheckLightingReflection` を実行し、照明反射リスクを確認する。 |
+| 4 | 黒画像取得 | 全黒信号を出力して `Black` 系画像を撮影し、ARW読込後にMAT形式で保存する。 |
+| 5 | フラット画像取得 | 対象領域出力後に `Flat` 画像を撮影し、MAT形式へ変換保存する。 |
+| 6 | 白画像取得 | 全白（または対象白）を撮影し、`WhiteBefore`/`WhiteMeasure` を状態別に保存する。 |
+| 7 | 対象エリア画像取得 | `MultiController` ではTop/Rightを分離、単一系ではArea画像を取得して保存する。 |
+| 8 | モアレ検査画像取得 | モアレ領域特定用画像と確認画像を撮影し、`checkMoire` で判定する。 |
+| 9 | Trimming画像取得 | `captureGapTrimmingAreaImage(measPath)` を呼び出してTop/Right分割領域画像を取得する。 |
+| 10 | Gapスイング撮影 | `captureGapFlatImageSwing(measPath, lstTgtUnit)` を実行し、複数信号レベルのGap画像群を保存する。 |
+| 11 | 出力復帰 | 処理終端で対象エリア信号を復帰出力し、次工程の解析入力状態を整える。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 保存先 | `measPath` が有効で書込み可能であること | ファイル保存例外で処理中断 |
+| 対象選択 | Gap対象Cabinetが矩形選択されていること | `CheckSelectedUnits` 例外を上位へ送出 |
+| カメラ制御 | `CaptureImage`、ARW読込、MAT保存が利用可能であること | 例外送出で処理中断 |
+| 信号制御 | 内部信号出力コマンドが利用可能であること | 例外送出または画像不足で後続失敗 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_bottomHalfTile` / `m_rightHalfTile` | 複数コントローラ境界用フラグ初期化/利用 | 処理開始時〜Trimming撮影時 |
+| `TrimAreaTopPos` / `TrimAreaRightPos` | Trimming中心位置を計算・保持 | `captureGapTrimmingAreaImage` 実行時 |
+| `winProgress` | 進捗メッセージ・ステップ更新 | 各撮影ステップ |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckSelectedUnits` | 対象Cabinet妥当性確認 | 同期 |
+| `CheckLightingReflection` | 映り込み検査 | 同期 |
+| `CaptureImage` | ARW撮影 | 同期 |
+| `loadArwFile` / `SaveMatBinary` | ARW読込・MAT保存 | 同期 |
+| `calcMoireCheckArea` / `checkMoire` | モアレ領域計算・判定 | 同期 |
+| `captureGapTrimmingAreaImage` | Trimming画像撮影 | 同期 |
+| `captureGapFlatImageSwing` | Gapスイング画像撮影 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 信号出力系をスキップし、撮影/保存中心で進行する。 |
+| `NO_CAP` | 実カメラ撮影をスキップし、既存ファイル前提で進行する。 |
+| `MultiController` | Top/Right分離撮影、半分タイル撮影、境界拡張ロジックを有効化する。 |
+| `Reflection` | 黒画像の複数枚撮影と反射考慮ロジックを有効化する。 |
+| `CorrectTargetEdge` | 対象エッジ拡張出力を利用する。 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ARW保存未完了 | `checkFileSize` 判定 | `Exception` を上位へ送出 | 当該ステップで中断 |
+| ARW読込失敗 | `loadArwFile` 例外 | 一部箇所は再試行後、それでも失敗時は送出 | 処理中断 |
+| ユーザー中断 | `CameraCasUserAbortException` | 上位へ再送出 | 呼出元で中断通知 |
+| 対象選択不正 | `CheckSelectedUnits` 例外 | 上位へ再送出 | 呼出元で失敗処理 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as measure/adjust
+    participant CAP as captureGapImages
+    participant SIG as SignalOutput
+    participant CAM as CameraControl
+    participant FS as File(ARW/MAT)
+    participant ANA as Moire/Trimming
+
+    CALLER->>CAP: captureGapImages(measPath)
+    CAP->>CAP: CheckSelectedUnits/初期化
+    loop 各撮影種別（黒/フラット/白/Area/Moire）
+        CAP->>SIG: 種別に応じた内蔵パターン表示
+        CAP->>CAM: Thread.Sleep(PatternWait) 後に CaptureImage(imgPath[, m_ShootCondition])
+        CAM-->>CAP: ARW
+        CAP->>FS: loadArwFile + SaveMatBinary
+    end
+    CAP->>ANA: calcMoireCheckArea / checkMoire
+    CAP->>ANA: captureGapTrimmingAreaImage
+    CAP->>ANA: captureGapFlatImageSwing
+    CAP->>SIG: 対象エリア出力復帰
+    CAP-->>CALLER: 完了
+```
+
+#### 8-2-8. CaptureImage
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CaptureImage(string imgPath)` / `private void CaptureImage(string imgPath, ShootCondition condition)` |
+| 概要 | カメラ制御プロセスへ撮影要求を渡し、画像保存完了まで待機する共通撮影メソッド |
+
+責務境界（内蔵パターン表示）
+
+| 項目 | 内容 |
+|------|------|
+| 本メソッドの責務 | 撮影要求の投入、完了待機、再試行（再接続） |
+| 呼出側の責務 | 内蔵パターン表示（`outputIntSig*`、`outputGapCamTargetArea*`）と表示後の待機 |
+| 代表呼出元 | `captureGapImages`、`captureGapTrimmingAreaImage`、`captureGapFlatImageSwing` |
+| 備考 | 実装上、`CaptureImage` 内ではパターン出力APIを呼び出していない |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | imgPath | string | Y | 保存先の拡張子なしファイルパス |
+| 2 | condition | ShootCondition | N | 撮影条件（F値、SS、ISO等）。指定時はこの条件で撮影 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 中断チェック | `CheckUserAbort()` を実行し、ユーザー中断要求があれば例外で終了する。 |
+| 2 | 旧ファイル削除 | `imgPath + .arw/.jpg` が存在する場合は削除し、待機判定の誤検知を防ぐ。 |
+| 3 | 制御プロセス確認 | `StartCameraController()` で `AlphaCameraController` 起動状態を保証する。 |
+| 4 | 撮影指示データ作成 | `CameraControlData` を構成し、`ImgPath`、`ShootFlag=true`、`LiveViewFlag=0` を設定する。 |
+| 5 | 条件設定分岐 | 引数なし版は既存 `CamCont.xml` から前回条件を読込、引数あり版は `condition` を明示設定する。 |
+| 6 | 指示保存 | `CameraControlData.SaveToXmlFile(CamContFile, cont)` で撮影要求を永続化する。 |
+| 7 | 撮影完了待機 | `Wait4Capturing(imgPath)` で完了待ちを行う。失敗時は再接続後に1回再試行する。 |
+| 8 | 完了処理 | シャッター音再生後、`CameraWait` 分だけ待機し、次撮影に備える。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 保存先 | `imgPath` の親ディレクトリに書込み可能であること | 保存/待機失敗として例外またはreturn |
+| 制御ファイル | `CamContFile` へ読み書き可能であること | XMLアクセス失敗時はreturn |
+| カメラ状態 | カメラ接続・制御プロセスが利用可能であること | 再接続を試み、失敗時は例外送出 |
+| 撮影条件 | 引数あり版では `condition` が妥当であること | 不正値時はカメラ制御側で失敗 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `CamContFile` | 撮影要求（条件/保存先/フラグ）を保存 | 手順6 |
+| 画像ファイル（`.arw`/`.jpg`） | 既存削除後に新規出力 | 手順2〜7 |
+| カメラ接続状態 | 待機失敗時に `DisconnectCamera`→`ConnectCamera` で再確立 | 手順7（例外時） |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckUserAbort` | ユーザー中断要求の検出 | 同期 |
+| `StartCameraController` | 撮影制御プロセス起動確認 | 同期 |
+| `CameraControlData.LoadFromXmlFile` | 既存撮影条件の読込（引数なし版） | 同期 |
+| `CameraControlData.SaveToXmlFile` | 撮影要求保存 | 同期 |
+| `Wait4Capturing` | 撮影完了待機 | 同期 |
+| `DisconnectCamera` / `ConnectCamera` | 失敗時の再接続 | 同期 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `CaptureImage(imgPath)` | 既存の撮影条件を引き継いで撮影する。 |
+| `CaptureImage(imgPath, condition)` | 呼出し時に指定された条件で撮影する。 |
+| `CamContFile` 読込不可（引数なし版） | `catch { return; }` で処理終了する。 |
+| `Wait4Capturing` 失敗 | カメラ再接続後に同一要求を再送し、再待機する。 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ユーザー中断 | `CheckUserAbort` 例外 | 呼出元へ伝播 | 以降撮影を中断 |
+| 制御XML書込失敗 | `SaveToXmlFile` 例外 | 当該メソッド内で `return` | 無音で終了 |
+| 撮影待機失敗 | `Wait4Capturing` 例外 | 再接続後に再試行、再失敗時は例外伝播 | 接続再初期化 |
+| 旧ファイル削除失敗 | `File.Delete` 例外（環境依存） | 呼出元へ例外伝播 | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap処理
+    participant CAP as CaptureImage
+    participant CC as AlphaCameraController
+    participant CFG as CamCont.xml
+    participant CAM as Camera
+
+    CALLER->>CAP: CaptureImage(imgPath[, condition])
+    CAP->>CAP: CheckUserAbort / 旧ファイル削除
+    CAP->>CC: StartCameraController
+    CAP->>CFG: SaveToXmlFile(ShootFlag=true)
+    CAP->>CC: Wait4Capturing(imgPath)
+    CC->>CAM: シャッター実行
+    CAM-->>CC: 画像保存完了
+    CC-->>CAP: 完了通知
+    CAP-->>CALLER: return
+```
+
+#### 8-2-9. captureGapTrimmingAreaImage
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void captureGapTrimmingAreaImage(string measPath)` |
+| 概要 | Gap補正点抽出用のGapPos/Top/Right画像群を撮影し、Trimming中心座標を更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | measPath | string | Y | Trimming系画像の保存先ディレクトリパス |
+
+返り値: なし（void）
+
+責務分担（パターン表示と撮影）
+
+| 項目 | 内容 |
+|------|------|
+| 本メソッドの責務 | Trimmingパターン表示、撮影シーケンス制御、MAT保存、中心位置配列更新 |
+| `CaptureImage` の責務 | 撮影要求投入、保存完了待機、再試行（再接続） |
+| 呼出し順序 | 「パターン表示」→「`Thread.Sleep(PatternWait)`」→「`CaptureImage(...)`」 |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期パターン表示 | Cell位置抽出用に `outputIntSigHatchInv` を表示し、`PatternWait` 待機する。 |
+| 2 | GapPos画像取得 | `CaptureNum` 回ループで `GapPos{n}` を撮影し、ARW読込後にMAT保存する。 |
+| 3 | Top/Bottom走査条件算出 | `TrimAreaNum` と `TrimmingOffset/Size` から `step` を算出し、`TrimAreaTopPos` 配列を準備する。 |
+| 4 | Top画像群取得 | 各 `n` でTop/Bottomパターン表示後に `Top{n}` を撮影・保存し、中心座標を `TrimAreaTopPos[n]` へ反映する。 |
+| 5 | Top HalfTile取得 | `MultiController && m_bottomHalfTile` の場合は `Top{n}_Half` も追加撮影・保存する。 |
+| 6 | Right/Left走査条件算出 | 高さ方向 `step` を再算出し、`TrimAreaRightPos` 配列を準備する。 |
+| 7 | Right画像群取得 | 各 `n` でRight/Leftパターン表示後に `Right{n}` を撮影・保存し、中心座標を `TrimAreaRightPos[n]` へ反映する。 |
+| 8 | Right HalfTile取得 | `MultiController && m_rightHalfTile` の場合は `Right{n}_Half` も追加撮影・保存する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 保存先 | `measPath` が有効で書込み可能であること | 保存失敗例外で中断 |
+| カメラ制御 | `CaptureImage` / ARW読込 / MAT保存が利用可能であること | 例外送出で中断 |
+| 設定値 | `TrimmingOffset`、`TrimmingSize`、`TrimAreaNum` が妥当であること | タイル縮退・座標不整合の可能性 |
+| 表示制御 | パターン出力APIが利用可能であること | 後続撮影品質低下または失敗 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `TrimAreaTopPos` | Top系列の中心座標を格納 | 手順4 |
+| `TrimAreaRightPos` | Right系列の中心座標を格納 | 手順7 |
+| `winProgress` | GapPos/Top/Rightの進捗を更新 | 各撮影ステップ |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | パターン出力をスキップし、撮影/保存中心で進行する。 |
+| `NO_CAP` | 実カメラ撮影をスキップし、既存ファイル前提で進行する。 |
+| `OutputOnlyGreen` | R/Bを0にした緑系パターンで表示する。 |
+| `MultiController` | `Top/Right` のHalfTile撮影分岐を有効化する。 |
+| `Coverity` | `step` 計算時にfloat経由の安全側キャストを行う。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `outputIntSigHatchInv` / `outputIntSigHatch` | Trimming用パターン表示 | 同期 |
+| `CaptureImage` | ARW撮影 | 同期 |
+| `loadArwFile` / `SaveMatBinary` | ARW読込・MAT保存 | 同期 |
+| `checkFileSize` | 保存完了判定 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ARW保存未完了 | `checkFileSize` 判定 | `Exception` を上位へ送出 | 当該ステップで中断 |
+| ARW読込失敗 | `loadArwFile` 例外 | 一部箇所は1秒待機後に再試行、失敗時は送出 | 処理中断 |
+| MAT保存失敗 | `SaveMatBinary` 例外 | 1秒待機後に再試行、失敗時は送出 | 処理中断 |
+| ユーザー中断 | `CameraCasUserAbortException` | 上位へ再送出 | 呼出元で中断通知 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CAP as captureGapImages
+    participant TRI as captureGapTrimmingAreaImage
+    participant SIG as SignalOutput
+    participant CAM as CaptureImage
+    participant FS as File(ARW/MAT)
+
+    CAP->>TRI: captureGapTrimmingAreaImage(measPath)
+    TRI->>SIG: HatchInv表示
+    loop GapPos (n=0..CaptureNum-1)
+        TRI->>CAM: CaptureImage(GapPos{n})
+        TRI->>FS: loadArwFile + SaveMatBinary
+    end
+    loop Top (n=0..TrimAreaNum-1)
+        TRI->>SIG: Top/Bottomパターン表示
+        TRI->>CAM: CaptureImage(Top{n})
+        TRI->>FS: loadArwFile + SaveMatBinary
+        alt MultiController && bottomHalf
+            TRI->>CAM: CaptureImage(Top{n}_Half)
+            TRI->>FS: loadArwFile + SaveMatBinary
+        end
+    end
+    loop Right (n=0..TrimAreaNum-1)
+        TRI->>SIG: Right/Leftパターン表示
+        TRI->>CAM: CaptureImage(Right{n})
+        TRI->>FS: loadArwFile + SaveMatBinary
+        alt MultiController && rightHalf
+            TRI->>CAM: CaptureImage(Right{n}_Half)
+            TRI->>FS: loadArwFile + SaveMatBinary
+        end
+    end
+    TRI-->>CAP: TrimAreaTopPos / TrimAreaRightPos 更新完了
+```
+
+#### 8-2-10. captureGapFlatImageSwing
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void captureGapFlatImageSwing(string measPath, List<UnitInfo> lstTgtUnit)` |
+| 概要 | 複数信号レベルでGap画像群を撮影し、後段のゲイン推定用データを生成する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | measPath | string | Y | Gapスイング画像の保存先ディレクトリパス |
+| 2 | lstTgtUnit | List<UnitInfo> | Y | 対象Cabinet一覧（パターン表示範囲決定に使用） |
+
+返り値: なし（void）
+
+責務分担（パターン表示と撮影）
+
+| 項目 | 内容 |
+|------|------|
+| 本メソッドの責務 | 信号レベル列生成、FlatGapパターン表示、レベル別画像撮影制御、MAT保存 |
+| `CaptureImage` の責務 | 撮影要求投入、保存完了待機、再試行（再接続） |
+| 呼出し順序 | 「（必要時）黒表示撮影」→「FlatGap表示」→「`Thread.Sleep(PatternWait)`」→「`CaptureImage(...)`」 |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | レベル比率決定 | `m_GapStatus` に応じて比率配列を選択する（Before/Measure: 0.80〜1.20、その他: 0.96〜1.04）。 |
+| 2 | 信号レベル生成 | `m_MeasureLevel` をガンマ空間で換算し、比率適用後に `gapLevel[]` を算出する。 |
+| 3 | レベル単位進捗更新 | 各 `gapLevel[n]` ごとに進捗メッセージ更新とログ出力を行う。 |
+| 4 | 反射用黒撮影（条件付き） | `Reflection` 有効時は各レベルごとに全黒表示で `CaptureNum` 回撮影し、`*_Black_*` を保存する。 |
+| 5 | FlatGap表示 | `outputIntSigFlatGap` で対象領域のGap信号を表示し、`PatternWait` 待機する。 |
+| 6 | Gap画像撮影 | 各レベルで `CaptureNum` 回撮影し、`GapBefore_*` / `GapResult_*` / `GapMeasure_*` を状態別命名で保存する。 |
+| 7 | ARW→MAT変換 | 各撮影ファイルについて保存完了確認、ARW読込、1ch MAT変換、`SaveMatBinary` を実施する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 保存先 | `measPath` が有効で書込み可能であること | 保存失敗例外で中断 |
+| 状態値 | `m_GapStatus` が Before/Result/Measure 等の想定値であること | ファイル命名が不定になる可能性 |
+| カメラ制御 | `CaptureImage` / ARW読込 / MAT保存が利用可能であること | 例外送出で中断 |
+| 測定設定 | `m_MeasureLevel` が有効範囲内であること | レベル算出・露光結果が不正化 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `winProgress` | レベル単位の進捗更新 | 手順3 |
+| 出力ファイル群 | `Gap*_{level}_{cap}` と `*_Black_*` を生成 | 手順4/6 |
+| MATファイル群 | ARWを変換した解析入力ファイルを生成 | 手順7 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `m_GapStatus == Before or Measure` | レベル比率を9点（5%刻み）で生成する。 |
+| それ以外の状態 | レベル比率を5点（2%刻み）で生成する。 |
+| `Reflection` | 各レベルで黒撮影ループ（`*_Black_*`）を追加実行する。 |
+| `NO_CONTROLLER` | パターン表示をスキップし、撮影/保存中心で進行する。 |
+| `NO_CAP` | 実撮影をスキップし、既存ファイル前提で進行する。 |
+| `OutputOnlyGreen` | FlatGap表示時にG成分中心で出力する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `outputIntSigFlat` | 反射判定用の全黒表示 | 同期 |
+| `outputIntSigFlatGap` | レベル別Gapパターン表示 | 同期 |
+| `CaptureImage` | ARW撮影 | 同期 |
+| `checkFileSize` | 保存完了判定 | 同期 |
+| `loadArwFile` / `SaveMatBinary` | ARW読込・MAT保存 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ARW保存未完了 | `checkFileSize` 判定 | `Exception` を上位へ送出 | 当該レベルで中断 |
+| ARW読込失敗 | `loadArwFile` 例外 | 一部箇所は1秒待機後に再試行、失敗時は送出 | 処理中断 |
+| MAT保存失敗 | `SaveMatBinary` 例外 | 1秒待機後に再試行、失敗時は送出 | 処理中断 |
+| ユーザー中断 | `CameraCasUserAbortException` | 上位へ再送出 | 呼出元で中断通知 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CAP as captureGapImages
+    participant SW as captureGapFlatImageSwing
+    participant SIG as SignalOutput
+    participant CAM as CaptureImage
+    participant FS as File(ARW/MAT)
+
+    CAP->>SW: captureGapFlatImageSwing(measPath, lstTgtUnit)
+    SW->>SW: gapLevel[] 生成（状態別）
+    loop 各gapLevel
+        alt Reflection
+            loop cap=0..CaptureNum-1
+                SW->>SIG: 全黒表示
+                SW->>CAM: CaptureImage(*_Black_*)
+                SW->>FS: loadArwFile + SaveMatBinary
+            end
+        end
+        SW->>SIG: outputIntSigFlatGap(level)
+        loop cap=0..CaptureNum-1
+            SW->>CAM: CaptureImage(Gap*_{level}_{cap})
+            SW->>FS: loadArwFile + SaveMatBinary
+        end
+    end
+    SW-->>CAP: レベル別Gap画像保存完了
+```
+
+### 8-3. SDCP取得・設定・書込みメソッド
 
 #### 8-3-1. setGapCvUnit
 
 | 項目 | 内容 |
 |------|------|
-| シグネチャ | `private void setGapCvUnit(UnitInfo Cabinet, GapCellCorrectValue cv)` |
+| シグネチャ | `private void setGapCvUnit(UnitInfo unit, GapCellCorrectValue cv)` |
 | 概要 | Cabinet単位の補正値をSDCPで設定する |
 
 引数
 
 | No. | 引数名 | 型 | 必須 | 説明 |
 |-----|--------|----|------|------|
-| 1 | Cabinet | UnitInfo | Y | 対象Cabinet |
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
 | 2 | cv | GapCellCorrectValue | Y | 8辺補正値 |
 
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合は無処理で終了する。 |
+| 2 | コマンド雛形作成 | `CmdGapCorrectValueSet` を複製し、対象Unitアドレスを設定する。 |
+| 3 | 8辺値設定 | TopLeft〜RightBottom の各辺を `cmd[8]`（辺種別）と `cmd[20]`（値）へ順次設定する。 |
+| 4 | SDCP送信 | 各辺ごとに `sendSdcpCommand(..., wait=100, ip)` を実行する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効で `ControllerID/PortNo/UnitNo` を保持していること | null時は即return |
+| 通信環境 | 対象ControllerへSDCP送信可能であること | 送信例外を呼出元へ送出 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Cabinet補正値の辺別設定 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP送信失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 途中辺まで反映の可能性あり |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as restore/adjust
+    participant M as setGapCvUnit
+    participant SDCP as Controller
+
+    CALLER->>M: setGapCvUnit(unit, cv)
+    alt unit is null
+        M-->>CALLER: return
+    else valid unit
+        loop 8 edges
+            M->>SDCP: CmdGapCorrectValueSet(edge,value)
+        end
+        M-->>CALLER: 完了
+    end
+```
 
 #### 8-3-2. setGapCvCell
 
 | 項目 | 内容 |
 |------|------|
-| シグネチャ | `private void setGapCvCell(UnitInfo Cabinet, int cell, GapCellCorrectValue cv)` |
+| シグネチャ | `private void setGapCvCell(UnitInfo unit, int cell, GapCellCorrectValue cv)` |
 | 概要 | Cell単位の補正値を辺ごとに設定する |
 
 引数
 
 | No. | 引数名 | 型 | 必須 | 説明 |
 |-----|--------|----|------|------|
-| 1 | Cabinet | UnitInfo | Y | 対象Cabinet |
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
 | 2 | cell | int | Y | Cell番号（1ベース） |
 | 3 | cv | GapCellCorrectValue | Y | 8辺補正値 |
 
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 辺展開 | `GapCellCorrectValue` の8辺値をEdge_1〜Edge_8へ展開する。 |
+| 2 | 辺別設定呼出し | 各辺ごとに `setGapCvCellEdge(unit, cell, edge, value)` を呼び出す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Cell | `cell` が1ベースの有効範囲であること | 下位処理結果に依存（不正値送信の可能性） |
+| 対象Unit | `unit` が有効であること | 下位 `setGapCvCellEdge` 側でreturn |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `setGapCvCellEdge` | Cell辺単位の補正値設定 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 辺別設定失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 一部辺のみ反映の可能性あり |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as restore/adjust
+    participant M as setGapCvCell
+    participant EDGE as setGapCvCellEdge
+
+    CALLER->>M: setGapCvCell(unit, cell, cv)
+    loop Edge_1..Edge_8
+        M->>EDGE: setGapCvCellEdge(unit,cell,edge,value)
+    end
+    M-->>CALLER: 完了
+```
+
 #### 8-3-3. setGapCvCellEdge
 
 | 項目 | 内容 |
 |------|------|
-| シグネチャ | `private void setGapCvCellEdge(UnitInfo Cabinet, int cell, EdgePosition targetEdge, int value)` |
+| シグネチャ | `private void setGapCvCellEdge(UnitInfo unit, int cell, EdgePosition targetEdge, int value)` |
 | 概要 | Cellの指定辺へ補正値を設定する |
 
 引数
 
 | No. | 引数名 | 型 | 必須 | 説明 |
 |-----|--------|----|------|------|
-| 1 | Cabinet | UnitInfo | Y | 対象Cabinet |
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
 | 2 | cell | int | Y | Cell番号 |
 | 3 | targetEdge | EdgePosition | Y | 対象辺 |
 | 4 | value | int | Y | 補正値 |
 
 返り値: なし（void）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合はreturnする。 |
+| 2 | コマンド生成 | `CmdGapCellCorrectValueSet` を複製し、Unitアドレス・Cell・Edge・Valueを設定する。 |
+| 3 | SDCP送信 | `sendSdcpCommand(cmd, 100, ip)` を実行する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること | null時は無処理終了 |
+| 値範囲 | `value` がbyteへ変換可能範囲であること | キャスト値で送信（仕様外値は機器依存） |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Cell/Edge単位補正値設定 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP送信失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元で失敗処理 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as setGapCvCell
+    participant M as setGapCvCellEdge
+    participant SDCP as Controller
+
+    CALLER->>M: setGapCvCellEdge(unit,cell,edge,value)
+    alt unit is null
+        M-->>CALLER: return
+    else valid unit
+        M->>SDCP: CmdGapCellCorrectValueSet
+        M-->>CALLER: 完了
+    end
+```
+
 #### 8-3-4. setGapCvCellBulk
 
 | 項目 | 内容 |
 |------|------|
-| シグネチャ | `private void setGapCvCellBulk(UnitInfo Cabinet, int cell, GapCellCorrectValue cv)` |
+| シグネチャ | `private void setGapCvCellBulk(UnitInfo unit, int cell, GapCellCorrectValue cv)` |
 | 概要 | Cell補正値を一括コマンドで設定する |
 
 引数
 
 | No. | 引数名 | 型 | 必須 | 説明 |
 |-----|--------|----|------|------|
-| 1 | Cabinet | UnitInfo | Y | 対象Cabinet |
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
 | 2 | cell | int | Y | Cell番号 |
 | 3 | cv | GapCellCorrectValue | Y | 8辺補正値 |
 
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合はreturnする。 |
+| 2 | Bulkコマンド生成 | `CmdGapCellCorrectValueSetBulk` へCell、Unitアドレス、8辺値を格納する。 |
+| 3 | 一括送信 | `sendSdcpCommand(...,100,ip)` を1回送信し、8辺を一括反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること | null時は無処理終了 |
+| Bulk対応 | 対象FWがBulkコマンドを受理すること | 送信失敗は例外送出 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Cell補正値一括反映 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Bulk送信失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元で失敗処理 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as restoreBulk/adjust
+    participant M as setGapCvCellBulk
+    participant SDCP as Controller
+
+    CALLER->>M: setGapCvCellBulk(unit,cell,cv)
+    alt unit is null
+        M-->>CALLER: return
+    else valid unit
+        M->>SDCP: CmdGapCellCorrectValueSetBulk(8edges)
+        M-->>CALLER: 完了
+    end
+```
 
 #### 8-3-5. writeGapCellCorrectionValueWithReconfig
 
@@ -1054,6 +2835,219 @@ sequenceDiagram
 |-----|--------|----|------|
 | 1 | result | bool | true: 正常終了 |
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | Step設定 | `4 + lstModifiedUnits.Count` を進捗総Stepへ設定する。 |
+| 2 | Panel OFF | 全Controllerへ `CmdUnitPowerOff` を送信し、待機する。 |
+| 3 | Write | 変更対象Unitごとに `CmdGapCellCorrectWrite` を送信する。 |
+| 4 | Reconfig | 対象Controllerを有効化して `sendReconfig()` を実行する。 |
+| 5 | Panel ON | 全Controllerへ `CmdUnitPowerOn` を送信し、進捗を完了させる。 |
+| 6 | 戻り値返却 | 正常終了時 `true` を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象一覧 | `lstModifiedUnits` が更新済みであること | Write対象不足により反映漏れの可能性 |
+| 通信環境 | Power/Write/Reconfigコマンド実行が可能であること | 例外送出で上位失敗 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `winProgress` | Stepカウント・メッセージ更新 | 各処理段階 |
+| Controller.Target | Reconfig送信対象をtrue化 | Reconfig直前 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Panel OFF/ON、Unit Write送信 | 同期 |
+| `sendReconfig` | 設定確定反映 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Power/Write/Reconfig失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元でエラー通知 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as restore/romSave
+    participant W as writeGapCellCorrectionValueWithReconfig
+    participant C as Controllers
+
+    CALLER->>W: writeGapCellCorrectionValueWithReconfig()
+    W->>C: Panel OFF
+    loop modified units
+        W->>C: GapCellCorrectWrite
+    end
+    W->>C: Reconfig
+    W->>C: Panel ON
+    W-->>CALLER: true
+```
+
+#### 8-3-6. getGapCvUnit
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void getGapCvUnit(UnitInfo unit, ref GapCellCorrectValue cv)` |
+| 概要 | Cabinet単位の補正値（8辺）をSDCPで取得する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
+| 2 | cv | ref GapCellCorrectValue | Y | 取得値格納先（参照渡し） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 出力初期化 | `cv = new GapCellCorrectValue()` で初期化する。 |
+| 2 | 入力検証 | `unit == null` の場合は無処理で終了する。 |
+| 3 | コマンド雛形作成 | `CmdGapCorrectValueGet` を複製し、対象Unitアドレスを設定する。 |
+| 4 | 8辺順次取得 | `cmd[8]` を 0..7 に切替え、`sendSdcpCommand` の応答hex文字列を数値へ変換して `cv` の各辺へ格納する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効で `ControllerID/PortNo/UnitNo` を保持していること | null時return |
+| 通信環境 | 対象ControllerへSDCP GET送信が可能であること | 送信例外を呼出元へ送出 |
+| 応答形式 | 応答文字列が16進数変換可能であること | 変換例外を呼出元へ送出 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Cabinet補正値の辺別取得 | 同期 |
+| `Convert.ToInt32(...,16)` | 16進応答の数値化 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP取得失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 取得途中の値で中断 |
+| 応答変換失敗 | `Convert.ToInt32` 例外 | 呼出元へ再送出 | 取得中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as backup/adjust
+    participant M as getGapCvUnit
+    participant SDCP as Controller
+
+    CALLER->>M: getGapCvUnit(unit, ref cv)
+    alt unit is null
+        M-->>CALLER: return
+    else valid unit
+        loop Edge 0..7
+            M->>SDCP: CmdGapCorrectValueGet(edge)
+            SDCP-->>M: hex string
+            M->>M: hex->int 変換してcvへ格納
+        end
+        M-->>CALLER: 完了
+    end
+```
+
+#### 8-3-7. getGapCvCell
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void getGapCvCell(UnitInfo unit, int cell, ref GapCellCorrectValue cv)` |
+| 概要 | Cell単位の補正値（8辺）をSDCPで取得する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | unit | UnitInfo | Y | 対象Cabinet |
+| 2 | cell | int | Y | Cell番号（1ベース） |
+| 3 | cv | ref GapCellCorrectValue | Y | 取得値格納先（参照渡し） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 出力初期化 | `cv = new GapCellCorrectValue()` を設定する。 |
+| 2 | 条件分岐 | `NO_CONTROLLER` 時は全辺128を設定して終了する。 |
+| 3 | 入力検証 | 通常系では `unit == null` の場合は終了する。 |
+| 4 | コマンド送信 | `CmdGapCellCorrectValueGet` にUnitアドレスと `cell` を設定して送信する。 |
+| 5 | 特殊応答判定 | 応答が `"0180"` の場合は既定値のまま終了する。 |
+| 6 | 8辺展開 | 応答16進文字列を2桁ずつ分割し、TopLeft〜BottomRightへ格納する。 |
+| 7 | 変換失敗対応 | 文字列分割/変換失敗時は `catch` で無処理returnする。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること（通常系） | null時return |
+| 対象Cell | `cell` が機器仕様上の有効範囲であること | 応答異常または変換失敗 |
+| 通信環境 | SDCP GET送信が可能であること | 例外送出 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 各辺を128で固定設定する。 |
+| 応答 `"0180"` | 実値展開を行わず終了する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | Cell補正値取得 | 同期 |
+| `Convert.ToInt32(...,16)` | 16進応答の数値化 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP取得失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 取得中断 |
+| 文字列変換失敗 | `catch` で吸収 | 例外非送出 | 既定値のままreturn |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as backup/adjust
+    participant M as getGapCvCell
+    participant SDCP as Controller
+
+    CALLER->>M: getGapCvCell(unit, cell, ref cv)
+    alt NO_CONTROLLER
+        M->>M: cvの全辺を128で設定
+        M-->>CALLER: return
+    else Controller使用
+        alt unit is null
+            M-->>CALLER: return
+        else valid
+            M->>SDCP: CmdGapCellCorrectValueGet(cell)
+            SDCP-->>M: hex string
+            alt response == 0180
+                M-->>CALLER: return
+            else normal response
+                M->>M: 8辺へ分割・変換格納
+                M-->>CALLER: 完了
+            end
+        end
+    end
+```
+
 ### 8-4. 補助計算メソッド
 
 #### 8-4-1. getCv
@@ -1066,6 +3060,43 @@ sequenceDiagram
 引数: `cv`, `cp`  
 返り値: 補正レジスタ値（int）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 対象種別判定 | `cp.CellNo == NA` ならUnit値、そうでなければCell値を参照対象にする。 |
+| 2 | 位置対応値取得 | `cp.Pos`（TopLeft等）に対応する補正値を `cv.CvUnit` または `cv.AryCvCell` から取得する。 |
+| 3 | 元レジスタ保存 | 取得値を `cp.RegOrg` に格納する。 |
+| 4 | 値返却 | 取得レジスタ値を戻り値として返す。 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `No_CabinetCorrectionValue` | Unit参照時は固定値128を返す。 |
+| `CorrectTargetEdge` | Left/Bottom系ポジションも取得対象に含める。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 想定外Pos | 該当分岐なし | 既定値0のまま返却 | 呼出元で後続計算 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as adjustGapRegAsync
+    participant M as getCv
+
+    ADJ->>M: getCv(cv, cp)
+    M->>M: Unit/Cell判定
+    M->>M: Posに対応する値取得
+    M->>M: cp.RegOrg更新
+    M-->>ADJ: reg
+```
+
 #### 8-4-2. calcNewRegUnit
 
 | 項目 | 内容 |
@@ -1075,6 +3106,32 @@ sequenceDiagram
 
 引数: `curReg`, `gapGain`  
 返り値: 新補正値（現状0）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力受領 | 現在値 `curReg` と計測ゲイン `gapGain` を受け取る。 |
+| 2 | 戻り値返却 | 現行実装では常に `0` を返す。 |
+
+実装状態
+
+| 項目 | 内容 |
+|------|------|
+| 実装状況 | TODO（計算ロジック未実装） |
+| 影響 | Unit補正は実質無効。Cell補正中心で運用される。 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as adjustGapRegAsync
+    participant M as calcNewRegUnit
+
+    ADJ->>M: calcNewRegUnit(curReg,gapGain)
+    M-->>ADJ: 0
+```
 
 #### 8-4-3. calcNewRegCell
 
@@ -1086,25 +3143,1181 @@ sequenceDiagram
 引数: `curReg`, `gapGain`  
 返り値: 新補正値（int）
 
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 係数計算 | 仕様ゲイン範囲(75.0%-124.8%)から係数 `k=(1.248-0.75)/255` を算出する。 |
+| 2 | 現在ゲイン変換 | `curReg` を `curGain = 1 + k*(curReg-128)` へ変換する。 |
+| 3 | 目標ゲイン計算 | `newGain = curGain * (1.0 / gapGain)` で補正後ゲインを求める。 |
+| 4 | レジスタ逆変換 | `newReg = ((newGain-1)/k)+128` を四捨五入して算出する。 |
+| 5 | 範囲クランプ | `correctValue_Min`〜`correctValue_Max` の範囲へ丸める。 |
+| 6 | 値返却 | 新規レジスタ値を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| `gapGain` | 0以外であること | 0付近は計算値発散（呼出元で実質回避が前提） |
+| レジスタ範囲 | `curReg` が整数値であること | 演算後クランプで補正 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 非数値演算 | 浮動小数演算結果 | 例外は通常発生しない | クランプ後返却 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as adjustGapRegAsync
+    participant M as calcNewRegCell
+
+    ADJ->>M: calcNewRegCell(curReg,gapGain)
+    M->>M: reg→gain変換
+    M->>M: 逆ゲイン適用
+    M->>M: gain→reg逆変換
+    M->>M: min/maxクランプ
+    M-->>ADJ: newReg
+```
+
 #### 8-4-4. setGapCorrectValue
 
 | 項目 | 内容 |
 |------|------|
-| シグネチャ | `private void setGapCorrectValue(UnitInfo Cabinet, CorrectPosition pos, int value)` |
+| シグネチャ | `private void setGapCorrectValue(UnitInfo unit, CorrectPosition pos, int value)` |
 | 概要 | Cabinet境界の補正値を設定する |
 
-引数: `Cabinet`, `pos`, `value`  
+引数: `unit`, `pos`, `value`  
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合はreturnする。 |
+| 2 | 対象Unit反映 | `CmdGapCorrectValueSet` を生成し、`pos` 対応辺へ `value` を設定して送信する。 |
+| 3 | 隣接Unit探索 | `pos` から隣接方向を算出し、隣接Unitを取得する。 |
+| 4 | 隣接Unit反映 | 反対側辺番号へ同一値を設定し、Gap両側の整合を取る。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること | null時return |
+| 隣接Unit | 配列範囲内に隣接Unitが存在すること | 取得失敗時は対象Unitのみ反映 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `CorrectTargetEdge` | 8方向ポジションを明示対応し、隣接辺のマッピングを切替える。 |
+| `Coverity` | null判定と座標参照順を安全側へ変更する。 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 隣接参照失敗 | `try-catch` で配列参照 | 例外を握りつぶしてreturn | 片側のみ設定 |
+| SDCP送信失敗 | 下位処理 `Exception` | 呼出元へ再送出 | 呼出元で失敗処理 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as adjustGapRegAsync
+    participant M as setGapCorrectValue
+    participant SDCP as Controller
+
+    ADJ->>M: setGapCorrectValue(unit,pos,value)
+    M->>SDCP: 対象Unitの辺へ設定
+    M->>M: 隣接Unit/反対辺を算出
+    alt 隣接Unitあり
+        M->>SDCP: 隣接Unitの反対辺へ設定
+    end
+    M-->>ADJ: 完了
+```
 
 #### 8-4-5. storeGapCp
 
 | 項目 | 内容 |
 |------|------|
 | シグネチャ | `private void storeGapCp(List<UnitInfo> lstTgtUnit, string measPath)` |
-| 概要 | Top/Right画像解析結果を補正データへ格納する |
+| 概要 | Top/Rightトリミング領域を補正点群へ再構成し、後段ゲイン推定用の `lstGapCamCp` を確定する |
 
-引数: `lstTgtUnit`, `measPath`  
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnit | List<UnitInfo> | Y | 補正対象Unitの矩形集合 |
+| 2 | measPath | string | Y | Top/Rightトリミング画像の保存先ベースパス |
+
 返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 解析バッファ初期化 | `CaptureTilt` / `RotateRect` 条件に応じ、Top/Rightのトリミング領域バッファ（`Area` または `RotatedRect`）を `TrimAreaNum` 本分確保する。 |
+| 2 | Top画像群読込 | `n=0..TrimAreaNum-1` で `measPath + fn_Top + n` を読み、`getTrimmingAreaGap(file, TopLeft, lstTgtUnit, out ...)` で領域抽出する。進捗文言とログを更新する。 |
+| 3 | Right画像群読込 | `n=0..TrimAreaNum-1` で `measPath + fn_Right + n` を読み、`getTrimmingAreaGap(file, RightTop, lstTgtUnit, out ...)` を実行する。 |
+| 4 | 対象矩形算出 | `lstTgtUnit` から `StartUnitX/Y` と `EndUnitX/Y` を求め、対象幅 `LenX/LenY` を決定する。 |
+| 5 | エッジ補正可否判定 | `CorrectTargetEdge` 時は `checkWallEdge` で壁端状態（Top/Bottom/Left/Right）を取得し、`MultiController` 時は module単位の補正有効フラグへ変換する。 |
+| 6 | Cabinetループ開始 | 対象Cabinetごとに `GapCamCorrectionValue` を生成し、`searchUnit` で `Unit` を結び付ける。 |
+| 7 | 水平方向補正点生成 | TopLeft/TopRightそれぞれについて、module行列を走査し `GapCamCp(Direction=Horizontally)` を構築する。最上段/最下段の補正可否は `topEdge`/`bottomEdge`（または module有効フラグ）で分岐する。 |
+| 8 | 垂直方向補正点生成 | RightTop/RightBottomそれぞれについて、module行列を走査し `GapCamCp(Direction=Vertically)` を構築する。最左/最右境界は `leftEdge`/`rightEdge`（または module有効フラグ）で分岐する。 |
+| 9 | 補正点群蓄積 | Cabinet単位で構築した `gapCv` を `lstGapCamCp` へ追加する。 |
+| 10 | デバッグ可視化（任意） | `MultiControllerTest && TempFile` 時は `topPattern.jpg/rightPattern.jpg` に補正点情報を書き込み、配置妥当性を可視化する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `measPath` 配下に `fn_Top*` / `fn_Right*` が存在し、`TrimAreaNum` 分そろっていること | 下位例外で処理中断 |
+| 対象選択 | `lstTgtUnit` が矩形選択（連続したUnit領域）を満たすこと | インデックス不整合または補正点欠落 |
+| 事前状態 | 呼出元で `lstGapCamCp` が初期化済みであること | 旧データ混在の可能性 |
+| モジュール設定 | `m_ModuleXNum/m_ModuleYNum`（非CaptureTilt時は `m_ModuleCountX/m_ModuleCountY`）が設定済みであること | Cell対応付け不整合 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstGapCamCp` | Cabinet単位の `GapCamCorrectionValue` を追加 | 手順9 |
+| `gapCv.lstCellCp` | Top/Right由来の `GapCamCp` 群を登録 | 手順7-8 |
+| `winProgress` | Top/Right画像ロード進捗とメッセージ更新 | 手順2-3 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `CaptureTilt` | 2次元インデックス配列ベースでTop/Right領域を参照し、module単位補正点を構築する。無効時は1次元リストをY/Xソートして行単位に再配置する。 |
+| `RotateRect` | `GapCamCp.CamArea` 型を `RotatedRect[]` に切替える。無効時は `Area[]` を使用する。 |
+| `CorrectTargetEdge` | 壁端に接する外周補正の追加/スキップを制御する。 |
+| `MultiController` | 上下左右のmodule補正有効フラグを用いて、外周境界での参照インデックスと補正点生成を切替える。 |
+| `MultiControllerTest` + `TempFile` | 補正点座標を画像へ描画してデバッグ出力する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `getTrimmingAreaGap` | 画像からトリミング領域抽出 | 同期 |
+| `checkWallEdge` | 補正対象エッジ可否判定 | 同期 |
+| `searchUnit` | 座標から対象Unit解決 | 同期 |
+| `winProgress.ShowMessage/PutForward1Step` | UI進捗表示 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 画像読込失敗 | `getTrimmingAreaGap` 下位例外 | 呼出元へ再送出 | 以降の補正点生成を中断 |
+| 領域抽出失敗 | `getTrimmingAreaGap` 下位例外 | 呼出元へ再送出 | `lstGapCamCp` は途中状態の可能性 |
+| 想定外インデックス | 条件分岐/前提不一致での下位例外 | 呼出元へ再送出 | 後続 `calcGapPos` へ進まない |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant G as calcGapGain
+    participant S as storeGapCp
+    participant IMG as getTrimmingAreaGap
+    participant E as checkWallEdge
+    participant BUF as lstGapCamCp
+
+    G->>S: storeGapCp(lstTgtUnit,measPath)
+    loop Top/Right画像群
+        S->>IMG: getTrimmingAreaGap(file,dir,...)
+        IMG-->>S: trimming areas
+    end
+    S->>E: checkWallEdge(...)
+    E-->>S: top/bottom/left/right
+    loop 各Cabinet/Cell
+        S->>S: Top/Right補正点を構築
+        S->>BUF: GapCamCorrectionValueを追加
+    end
+    S-->>G: 補正点登録完了
+```
+
+#### 8-4-6. calcMoireCheckArea
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe void calcMoireCheckArea(string moireArea, string black, out List<Area> lstArea)` |
+| 概要 | モアレ判定対象画像と黒画像の差分から、モアレ評価用の8領域を抽出する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | moireArea | string | Y | モアレ領域抽出用の対象画像パス |
+| 2 | black | string | Y | 黒画像パス（差分基準） |
+| 3 | lstArea(out) | List<Area> | Y | 抽出されたモアレ評価領域8点（出力） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力画像読込 | `LoadMatBinary` で `moireArea` と `black` のMATを読込む。 |
+| 2 | 差分画像生成 | `moire - black` を画素単位で計算し、負値は0へクリップする。 |
+| 3 | 8bit化・2値化 | 差分を8bitへ変換し、`Threshold(Otsu)` で2値化する。 |
+| 4 | 形態学処理 | `MorphologyEx(Close)` を適用し、領域の欠けや分断を抑える。 |
+| 5 | ブロブ抽出 | `CvBlobs` で連結領域を抽出し、`calcArea` 基準の面積範囲でフィルタする。 |
+| 6 | 最低数チェック | 抽出領域が8未満の場合は異常として例外送出する。 |
+| 7 | 中心近傍8領域選別 | 画像中心からの距離が近い順に8領域を選び、`lstArea` として返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `moireArea` / `black` のMATが読込可能であること | 画像読込例外で中断 |
+| 領域抽出 | 有効ブロブが8個以上得られること | 例外送出（Large Tile表示確認を促す） |
+| 画像寸法 | 2画像の寸法が一致していること | 差分計算時に異常終了の可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `Coverity` | `using` を使ったリソース解放パスで処理する。 |
+| `TempFile` | 中間の2値画像/クロージング画像を一時保存する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | MAT画像読込 | 同期 |
+| `Cv2.Threshold` | Otsu二値化 | 同期 |
+| `Cv2.MorphologyEx` | 閉処理（Close） | 同期 |
+| `CvBlobs` | 連結領域抽出 | 同期 |
+| `calcArea` | 代表面積算出（面積フィルタ基準） | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 画像読込失敗 | `LoadMatBinary` 例外 | 呼出元へ再送出 | 処理中断 |
+| 領域不足（<8） | 件数判定 | `Exception` 送出 | モアレ判定処理を中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CAP as captureGapImages
+    participant AREA as calcMoireCheckArea
+    participant IMG as MatBinary
+    participant CV as OpenCV
+
+    CAP->>AREA: calcMoireCheckArea(moireArea, black, out lstArea)
+    AREA->>IMG: LoadMatBinary(moireArea/black)
+    AREA->>CV: 差分生成 + Otsu二値化 + Close
+    AREA->>CV: Blob抽出 + 面積フィルタ
+    AREA->>AREA: 中心近傍8領域を選別
+    AREA-->>CAP: lstArea
+```
+
+#### 8-4-7. checkMoire
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void checkMoire(string moireCheck, List<Area> lstArea)` |
+| 概要 | 指定領域ごとにDFTベースのモアレ指数を算出し、しきい値判定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | moireCheck | string | Y | モアレ評価対象画像パス |
+| 2 | lstArea | List<Area> | Y | 評価対象のROI領域リスト |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 判定条件準備 | `moireThreshold = Settings.Ins.GapCam.MoireSpec` を取得し、結果配列を準備する。 |
+| 2 | 判定画像読込 | `LoadMatBinary(moireCheck)` で評価対象画像を読込む。 |
+| 3 | ROIサイズ最適化 | 各 `Area` について正方ROIを作成し、`Dft.GetOptimalSize` でDFT最適サイズへ調整する。 |
+| 4 | ROI正規化 | ROIの平均輝度で正規化し、行/列方向のシェーディング補正を適用する。 |
+| 5 | 周波数解析 | `Dft` でスペクトラム画像を生成し、低周波中心成分を除外して指標値（標準偏差/平均）を算出する。 |
+| 6 | 領域別指標蓄積 | 各ROIのモアレ指標を `moireValue[n]` へ格納する。 |
+| 7 | 総合判定 | 全領域平均を `moire` とし、`moire > moireThreshold` なら例外送出する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 判定画像 | `moireCheck` のMATが読込可能であること | 読込例外で中断 |
+| 領域リスト | `lstArea` が空でないこと | 平均計算不正/判定不能 |
+| ROIサイズ | DFT最適サイズが1以上で算出可能であること | 例外送出（表示状態確認を促す） |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `Coverity` | `using` ベースで中間Matの解放パスを分岐する。 |
+| `TempFile` | ROIログ画像（原画像/補正後/DFT）を一時保存する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | 判定画像読込 | 同期 |
+| `Dft.GetOptimalSize` | DFT可能サイズ算出 | 同期 |
+| `Dft.TransForm` / `GetSpectrumImage` | 周波数スペクトラム生成 | 同期 |
+| `Cv2.MeanStdDev` | 指標値算出（平均・標準偏差） | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 最適サイズ算出不能 | `size == 1` 判定 | `Exception` 送出 | モアレ判定を中断 |
+| モアレ過大 | `moire > moireThreshold` | `Exception` 送出 | 上位で計測失敗として扱う |
+| 画像読込失敗 | `LoadMatBinary` 例外 | 呼出元へ再送出 | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CAP as captureGapImages
+    participant CHK as checkMoire
+    participant IMG as MatBinary
+    participant DFT as Dft/OpenCV
+
+    CAP->>CHK: checkMoire(moireCheck, lstArea)
+    CHK->>IMG: LoadMatBinary(moireCheck)
+    loop 各Area
+        CHK->>DFT: ROI切出し/正規化/シェーディング補正
+        CHK->>DFT: DFT + 低周波除外 + 指標算出
+    end
+    CHK->>CHK: 全Area平均とSpec比較
+    alt moire > spec
+        CHK-->>CAP: Exception(モアレ検出)
+    else spec内
+        CHK-->>CAP: 正常終了
+    end
+```
+
+#### 8-4-8. calcGapGain
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void calcGapGain(List<UnitInfo> lstTgtUnit, string measPath)` |
+| 概要 | GapPos/フラット白スイング画像を用いて補正点ごとのコントラスト特性を回帰し、最終補正ゲインを `lstGapCamCp` へ反映する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnit | List<UnitInfo> | Y | 補正対象 Unit 一覧（`storeGapCp` の補正点生成に使用） |
+| 2 | measPath | string | Y | Gap関連画像/結果CSVの入出力ディレクトリ |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前処理実行判定 | `m_GapStatus` が `Before` または `Measure` の場合のみ、対象領域生成・補正点構築・GapPos再計算を実施する。 |
+| 2 | 対象領域マスク生成 | `makeTargetArea` を呼び出し、黒画像差分から解析対象マスクを生成する（`Reflection`/`MultiController` で分岐）。 |
+| 3 | 補正点構築 | `storeGapCp(lstTgtUnit, measPath)` を実行し、`lstGapCamCp`（Unit/Cell補正点集合）を構築する。 |
+| 4 | GapPos平均化 | `GapPos*.matbin(x)` を `CaptureNum` 枚ロードして平均化し、`matAvg` を作成する。 |
+| 5 | GapPos更新 | `fn_Flat` を読込んで `calcGapPos(matAvg, flat, measPath)` を実行し、`m_MatGapPos` を更新する。 |
+| 6 | レベル一覧抽出 | ステータス別ファイル群（`GapBefore_*` / `GapResult_*` / `GapMeasure_*`）から信号レベルを重複排除して昇順化する。 |
+| 7 | レベル別点ゲイン算出 | 各レベルで `_fn_FlatWhite` を設定し、`calcCpGainRaw(measPath)` を呼び出して各補正点の `GapGain/Slope/Offset` を更新する。 |
+| 8 | 回帰入力系列作成 | `lstGapCamCp` を走査し、補正点ごとに `GapSwing` を作成して `GapMeas(level, slope, offset, gapGain)` を追加する。 |
+| 9 | 一次回帰 | 各 `GapSwing` の `Meas` から `Point2f(x=RatioLevel, y=GapGain)` を作成し `Cv2.FitLine(DistanceTypes.L1)` を実行する。戻り値 `line` から `a = line.Vy / line.Vx`、`b = -line.Vy / line.Vx * line.X1 + line.Y1` を算出し、`currentSigLevel = pow(m_MeasureLevel / 1023, 2.2)` を求める。続いて `TargetSigLevel = (Settings.Ins.GapCam.TargetGain - b) / a`、`CurrentContrast = a * currentSigLevel + b`、`Gain = currentSigLevel / TargetSigLevel` を計算して `GapSwing` へ格納する。 |
+| 10 | 近傍再回帰 | ターゲット信号レベル±10% に入る点が3点超ある場合、近傍点のみで再回帰して推定値を更新する。 |
+| 11 | 結果ファイル名決定 | `m_GapStatus` と `m_AdjustCount`、`NoEncript` に応じて `GapBefore`/`GapMeasure`/`GapAdjust(_n)` の拡張子（`.csv`/`.csvx`）を決定する。 |
+| 12 | 結果出力 | `GapSwing` 一覧を1行ずつ書き出す。`NO_CAP` 時はヘッダ2行（SignalLevel/RatioLevel）も出力する。 |
+| 13 | 復号確認出力（任意） | 暗号化出力時は確認用に `.csvx` を読込んで復号し、拡張子なしファイルへ平文を書き戻す。 |
+| 14 | 最終ゲイン反映 | `listGapSwing[idx].Gain` を `lstGapCamCp` の Unit/Cell 各 `cp.GapGain` へ順次反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像群 | `GapPos`、`fn_Flat`、レベル別 `GapBefore/Result/Measure` 画像が揃っていること | `LoadMatBinary`/`Directory.GetFiles` 例外で中断 |
+| 補正点前提 | `lstTgtUnit` が補正対象の配置条件を満たすこと | `storeGapCp` 下位処理で中断 |
+| 回帰設定 | `Settings.Ins.GapCam.TargetGain`、`m_MeasureLevel`、`CaptureNum` が妥当であること | 推定ゲインが不安定または異常値 |
+| 出力先 | `measPath` に書込み権限があること | CSV/CSVX 書込み例外で中断 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstGapCamCp` | 補正点群生成後、最終的に各 `cp.GapGain` を更新 | 手順3,14 |
+| `_fn_FlatWhite` | レベルごとの解析対象ファイル名へ切替え | 手順7 |
+| `m_MatGapPos` | GapPos2値化画像を更新 | 手順5 |
+| `GapBefore/Measure/Adjust(.csv/.csvx)` | 回帰結果を保存 | 手順12 |
+| `winProgress` | GapPos処理のメッセージ・進捗を更新 | 手順5 前後 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `m_GapStatus == Before or Measure` | 前処理（`makeTargetArea`/`storeGapCp`/`calcGapPos`）を実行する。`Result` 時はスキップ。 |
+| `Reflection` | `makeTargetArea` 呼出し時の黒画像指定を `_0` 付きに切替える。 |
+| `MultiController` | `makeTargetArea` を Top/Right の2回呼び出し、方向別マスクを生成する。 |
+| `NoEncript` | 入力拡張子を `.matbin`、出力を `.csv` とする。未定義時は `.matbinx` / `.csvx` を使用。 |
+| `CorrectTargetEdge` | `GapSwing` へ積む代表座標の採用条件（TopLeft/RightTop/BottomLeft/LeftTop）を拡張する。 |
+| `RotateRect` | `GapSwing` 生成時の座標取得に `Center` を使用（未定義時は `CenterPos`）。 |
+| `NO_CAP` | 出力ファイル先頭にヘッダ行（SignalLevel/RatioLevel）を追加する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `makeTargetArea` | 解析対象マスク生成 | 同期 |
+| `storeGapCp` | 補正点群構築 | 同期 |
+| `calcGapPos` | GapPos平均画像から補正点位置更新 | 同期 |
+| `calcCpGainRaw` | レベル単位の点ゲイン計算 | 同期 |
+| `Cv2.FitLine` | スイング系列の線形回帰 | 同期 |
+| `Encrypt` / `Decrypt` | `.csvx` 暗号化出力と確認復号 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 画像読込失敗 | `LoadMatBinary` 系例外 | 呼出元へ再送出 | 解析中断 |
+| 領域/補正点生成失敗 | `makeTargetArea` / `storeGapCp` / `calcGapPos` 下位例外 | 呼出元へ再送出 | 補正点未確定で中断 |
+| 回帰失敗 | `Cv2.FitLine` 下位例外 | 呼出元へ再送出 | 当該解析を中断 |
+| 出力ファイル失敗 | CSV書込み/暗号化例外 | 呼出元へ再送出 | 解析結果未保存 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as measure/adjust
+    participant G as calcGapGain
+    participant A as makeTargetArea/storeGapCp/calcGapPos
+    participant C as calcCpGainRaw
+    participant F as FitLine/CSV
+
+    M->>G: calcGapGain(lstTgtUnit, measPath)
+    alt Before or Measure
+        G->>A: makeTargetArea + storeGapCp
+        G->>A: GapPos平均化 + calcGapPos
+    end
+    G->>G: レベル一覧抽出
+    loop 各レベル
+        G->>C: calcCpGainRaw(measPath)
+        C-->>G: 点ごとのGapGain/Slope/Offset
+        G->>G: GapSwingへ蓄積
+    end
+    G->>F: FitLineでGain推定 + CSV出力
+    G->>G: lstGapCamCpへ最終Gain反映
+    G-->>M: 完了
+```
+
+#### 8-4-9. makeTargetArea
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void makeTargetArea(string file, string black, ExpandType type)` / `unsafe private void makeTargetArea(string file, string black)` |
+| 概要 | 対象エリア画像と黒画像から有効マスクを生成し、過飽和（サチリ）を検出する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | file | string | Y | 対象エリア画像（MAT）のベースパス |
+| 2 | black | string | Y | 黒画像（MAT）のベースパス |
+| 3 | type | ExpandType | N | MultiController時の対象種別（Top/Right） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 進捗更新 | `winProgress` とログへ「Calc Target area」を出力する。 |
+| 2 | 入力画像読込 | `LoadMatBinary` で `file` と `black` を読込む（`black.matbin` 不在時は `_0` をフォールバック）。 |
+| 3 | 差分画像生成 | `file - black` を画素単位で計算し、負値は0へクリップした16bit差分画像を作成する。 |
+| 4 | 2値化前処理 | 差分を8bit化し、`Threshold(Otsu)` で2値化して候補領域を抽出する。 |
+| 5 | 領域抽出 | `CvBlobs` で連結領域を抽出し、`GapTrimmingAreaMin` 以上でフィルタする。 |
+| 6 | 対象マスク生成 | 最大Blob輪郭を描画→FloodFill→反転→分離し、`m_MatMask` または `m_MatMaskTop/Right` を更新する。 |
+| 7 | サチリチェック | マスク適用画像を作成し、高輝度2値化（0.9*255）後のBlob有無で過飽和を判定する。 |
+| 8 | 結果判定 | サチリBlobが存在する場合は例外送出、なければ正常終了する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `file` と `black` のMATが読込可能であること | 例外送出で中断 |
+| 画像整合 | 2画像の寸法が一致していること | 差分処理で異常終了の可能性 |
+| 領域抽出 | 有効Blobが検出できること | 下位処理で例外またはマスク不正 |
+| 輝度条件 | 過飽和が発生していないこと | 例外送出（Wall画像設定確認） |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_MatMask` | 単一系の対象マスクを更新 | 手順6 |
+| `m_MatMaskTop` / `m_MatMaskRight` | 複数コントローラ系のTop/Rightマスクを更新 | 手順6 |
+| `winProgress` | 対象領域計算の進捗を更新 | 手順1 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `MultiController` | `type` に応じて Top/Right の別マスクへ保存する。 |
+| `Coverity` | `using` ベースの解放経路で一時Mat管理を行う。 |
+| `TempFile` | 中間画像（MeasArea/Bin/TargetArea/SaturationCheck）を保存する。 |
+| `MultiControllerTest` | 実測差分の代わりに `Temp\topWindow.jpg/rightWindow.jpg` を使用する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | MAT画像読込 | 同期 |
+| `Cv2.Threshold` | Otsu二値化/高輝度二値化 | 同期 |
+| `CvBlobs` | 連結領域抽出・最大Blob取得 | 同期 |
+| `Cv2.BitwiseNot` | マスク反転生成 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 入力読込失敗 | `try-catch`（`LoadMatBinary`） | `Exception(ex.Message)` を再送出 | 途中Matを解放 |
+| マスク生成失敗 | Blob/輪郭処理の下位例外 | 呼出元へ再送出 | 処理中断 |
+| 過飽和検出 | `maxBlob != null` 判定 | `Exception` 送出 | 補正処理を中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant G as calcGapGain
+    participant T as makeTargetArea
+    participant IMG as MatBinary
+    participant CV as OpenCV
+
+    G->>T: makeTargetArea(file, black[, type])
+    T->>IMG: LoadMatBinary(file/black)
+    T->>CV: 差分生成 + Otsu二値化 + Blob抽出
+    T->>CV: 最大Blobからマスク生成
+    T->>CV: マスク適用 + サチリ判定
+    alt 過飽和あり
+        T-->>G: Exception(too bright)
+    else 正常
+        T-->>G: 対象マスク更新完了
+    end
+```
+
+#### 8-4-10. getTrimmingAreaGap
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void getTrimmingAreaGap(string file, CorrectPosition pos, List<UnitInfo> lstTgtUnit, out RotatedRect[,] lstArea)` / `unsafe private void getTrimmingAreaGap(string file, CorrectPosition pos, List<UnitInfo> lstTgtUnit, out Area[,] lstArea)` / `unsafe private void getTrimmingAreaGap(string file, CorrectPosition pos, List<UnitInfo> lstTgtUnit, out List<Area> lstArea)` |
+| 概要 | タイル表示画像をマスク・2値化・Blob解析して、補正点生成用トリミング領域群を抽出する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | file | string | Y | 解析対象画像（MAT）のベースパス |
+| 2 | pos | CorrectPosition | Y | 解析方向（Top系/Right系） |
+| 3 | lstTgtUnit | List<UnitInfo> | Y | 対象Unit一覧（タイル期待数算出に使用） |
+| 4 | lstArea(out) | `RotatedRect[,]` / `Area[,]` / `List<Area>` | Y | 抽出されたトリミング領域（条件コンパイルで型が切替） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 画像読込 | `LoadMatBinary` で `file` を読み、入力画素（16bit）を取得する。 |
+| 2 | 半タイル画像読込（任意） | `MultiController` かつ半タイル有効時は `file + "_Half"` を読み込み、後段の差分加算に使用する。 |
+| 3 | 黒差分準備（任意） | `Reflection` 時は `fn_BlackFile + "_0"` を読込んで反射成分除去用バッファを準備する。 |
+| 4 | マスク適用画像生成 | `m_MatMask`（または `m_MatMaskTop/Right`）で有効画素を選別し、必要に応じて `Trim - Black (+Half-Black)` を計算する。 |
+| 5 | 8bit化・2値化 | 16bit画像を8bitへ変換し、`Threshold(Otsu)` で2値化する。 |
+| 6 | 形態学処理 | マスクコピー後に `MorphologyEx(Close)` を実施し、タイル領域の欠損を補完する。 |
+| 7 | Blob抽出・ノイズ除去 | `CvBlobs` で連結領域を抽出し、平均面積ベースで小領域を除去する。 |
+| 8 | タイル配列化 | `getTilePosition`（MultiController）または期待タイル数計算（非CaptureTilt）で、必要数・並びを確定する。 |
+| 9 | 出力領域生成 | `RotateRect` 時は輪郭から `MinAreaRect` を生成、非RotateRect時は `blob.Rect` から `Area` を生成して `lstArea` へ格納する。 |
+| 10 | 後処理 | 一時 `Mat` / マスクを解放し、必要時は `TempFile` へ中間画像を保存する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `file` のMATが存在し読込可能であること | 下位例外を再送出して中断 |
+| マスク状態 | `m_MatMask`（または `m_MatMaskTop/Right`）が事前に生成済みであること | 抽出結果不正または例外 |
+| 対象選択 | `lstTgtUnit` が対象範囲を正しく表していること | 期待タイル数不一致で例外 |
+| 画像品質 | タイルが十分に点灯し、ノイズより面積優位であること | Blob不足例外で中断 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstArea(out)` | 方向別トリミング領域を格納 | 手順9 |
+| `_mask`（ローカル） | 使用方向に応じたマスクへ差替え | 手順4 |
+| `gray/binary/closing`（ローカル） | 2値化・形態学処理結果を保持 | 手順5-6 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `CaptureTilt` | 2次元配列（`Area[,]`/`RotatedRect[,]`）を返す。無効時は `List<Area>` を返す。 |
+| `RotateRect` | Blob外接矩形ではなく輪郭ベースの最小回転矩形を算出する。 |
+| `MultiController` | `m_MatMaskTop/Right` と `m_topTileNum*`/`m_rightTileNum*` を使って方向別に配列化する。 |
+| `CorrectTargetEdge` | 壁端補正時の有効インデックス範囲（start/end x,y）を調整する。 |
+| `Reflection` | `black` 差分を用いた輝度補正で反射成分を低減する。 |
+| `MultiControllerTest` | 実画像の代わりに `Temp\topTile.jpg/rightTile.jpg` を入力として使う。 |
+| `TempFile` | Gray/Binary/Select などの中間画像を保存する。 |
+| `Coverity` | `using` 管理と例外経路リーク対策を有効化する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | MAT画像読込 | 同期 |
+| `Cv2.Threshold` | Otsu二値化 | 同期 |
+| `Cv2.MorphologyEx` | クロージング処理 | 同期 |
+| `CvBlobs` | Blob抽出・面積フィルタ | 同期 |
+| `getTilePosition` | タイル位置の列/行ソート | 同期 |
+| `checkWallEdge` | 壁端情報判定（CorrectTargetEdge時） | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 入力画像読込失敗 | `LoadMatBinary` 下位例外 | 呼出元へ再送出 | 一時Mat解放後に中断 |
+| タイル不足 | `blobs.Count < spec` または `getTilePosition` 例外 | `Exception` 送出 | 補正点生成フローを中断 |
+| タイル並び替え失敗 | 上下探索で候補なし | `Exception("Failed to sort tiles...")` | 処理中断 |
+| マスク/閾値異常 | 下位OpenCV例外 | 呼出元へ再送出 | 中間結果は破棄 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as storeGapCp
+    participant T as getTrimmingAreaGap
+    participant IMG as MatBinary
+    participant CV as OpenCV
+    participant TP as getTilePosition
+
+    S->>T: getTrimmingAreaGap(file, pos, lstTgtUnit, out lstArea)
+    T->>IMG: LoadMatBinary(file[, black/half])
+    T->>CV: Mask適用 + 差分生成 + Otsu2値化
+    T->>CV: Morphology(Close) + Blob抽出
+    alt MultiController
+        T->>TP: getTilePosition(blobs, tileNumX, tileNumY)
+        TP-->>T: 配列化済みBlob
+    else 非MultiController
+        T->>T: 期待タイル数算出/範囲調整
+    end
+    T->>T: Area/RotatedRectへ変換
+    T-->>S: lstArea(out)
+```
+
+#### 8-4-11. getTilePosition
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `void getTilePosition(CvBlobs blobs, int hNum, int vNum, out CvBlob[,] aryBlob)` |
+| 概要 | Blob集合を列方向に再配置し、各列をY座標順に整列したタイル配列 `aryBlob[hNum,vNum]` を生成する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | blobs | CvBlobs | Y | 入力Blob集合（タイル候補） |
+| 2 | hNum | int | Y | 想定タイル列数 |
+| 3 | vNum | int | Y | 想定タイル行数 |
+| 4 | aryBlob(out) | CvBlob[,] | Y | 列×行に整列済みタイル配列 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力妥当性確認 | `ShowPattern_CamPos` 時は `blobs == null` を即時例外とする。 |
+| 2 | 出力配列確保 | `aryBlob = new CvBlob[hNum, vNum]` を初期化する。 |
+| 3 | 必要個数チェック | `blobs.Count < hNum * vNum` の場合、個数不一致例外を送出する。 |
+| 4 | 面積上位の候補抽出 | `LargestBlob()` を `hNum*vNum` 回取得し、`listBlobs` へ移してノイズ成分を除外する。 |
+| 5 | 再チェック | 抽出後 `listBlobs.Count != hNum * vNum` の場合、個数不一致例外を送出する。 |
+| 6 | 列起点決定 | 各列ごとに、残候補から最小X重心Blobを選び列の起点（index=0）として登録する。 |
+| 7 | 上下探索で列補完 | 起点から上方向（-45〜-135°）/下方向（45〜135°）の最近傍Blobを探索し、距離が短い側を順次採用する。 |
+| 8 | 単行列の特例処理 | `vNum == 1` の場合は探索を省略し、起点をそのまま `aryBlob[x,0]` へ格納する。 |
+| 9 | 列内Yソート | 列分の候補が揃ったら `Centroid.Y` 昇順で並び替え、`aryBlob[x,*]` に確定する。 |
+| 10 | 全列完了 | `hNum` 列の処理完了後、呼出元へ整列配列を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力集合 | `blobs` が有効な連結領域集合であること | `No tiles found` 例外（条件付き） |
+| 期待個数 | タイル候補が `hNum*vNum` 以上あること | 個数不一致例外で中断 |
+| 幾何条件 | 列内で上下方向最近傍探索が成立する配置であること | 列ソート失敗例外で中断 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `aryBlob` | 列・行整列済みの最終タイル配列を構築 | 手順2,9 |
+| `listBlobs` | 候補タイルの作業集合を保持し、採用ごとに削除 | 手順4,6-7 |
+| `u_ref` / `d_ref` | 上下探索の基準重心を更新 | 手順7 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ShowPattern_CamPos` | `blobs == null` のとき早期例外（`No tiles found.`）を有効化する。 |
+| `vNum == 1` | 上下探索を実施せず、列起点Blobを直接結果へ格納する。 |
+| `uBlob/dBlob` 取得結果 | 双方未検出は失敗例外、片側のみ/両側検出時は距離比較で採用側を決定する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `blobs.LargestBlob` | 面積上位Blobの順次取得 | 同期 |
+| `blobs.Remove` | 採用済みBlobの除外 | 同期 |
+| `Math.Asin` / `Math.Sqrt` | 方向判定角度・距離計算 | 同期 |
+| `OrderBy(blob => blob.Centroid.Y)` | 列内Y座標ソート | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Blob未入力 | `blobs == null`（条件付き） | `Exception("No tiles found.")` | 処理中断 |
+| 個数不足 | `blobs.Count < hNum*vNum` / 抽出後不一致 | `Exception("The number of found tiles is not correct...")` | 処理中断 |
+| 列探索失敗 | 上下探索で候補が得られない | `Exception("Failed to sort tiles. (Column=...)")` | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant T as getTrimmingAreaGap
+    participant P as getTilePosition
+    participant B as CvBlobs
+    participant A as aryBlob
+
+    T->>P: getTilePosition(blobs, hNum, vNum, out aryBlob)
+    P->>B: Count確認 / LargestBlob抽出
+    loop hNum列
+        P->>P: 最小X Blobを列起点に設定
+        alt vNum == 1
+            P->>A: aryBlob[x,0] を確定
+        else 複数行
+            loop 列内 vNum 個まで
+                P->>P: 上下候補探索 + 距離比較
+            end
+            P->>P: Centroid.Y 昇順で列ソート
+            P->>A: aryBlob[x,*] を確定
+        end
+    end
+    P-->>T: aryBlob(out)
+```
+
+#### 8-4-12. getTilePos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `void getTilePos(CvBlobs blobs, int[] tileNum, out CvBlob[][] aryBlob)` |
+| 概要 | 列ごとに必要タイル数が異なる条件で、Blob集合を列単位に整列してジャグ配列 `aryBlob` に格納する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | blobs | CvBlobs | Y | 入力Blob集合（タイル候補） |
+| 2 | tileNum | int[] | Y | 各列の期待タイル数配列 |
+| 3 | aryBlob(out) | CvBlob[][] | Y | 列ごとの可変長タイル配列 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 出力配列初期化 | `tileNum.Length` 列のジャグ配列を確保し、各列に `tileNum[i]` 要素を割り当てる。 |
+| 2 | 入力妥当性確認 | `blobs == null` の場合は `No tiles found.` 例外を送出する。 |
+| 3 | 必要総数算出 | `tileNum` の総和 `num` を計算し、必要Blob総数を決定する。 |
+| 4 | 個数チェック | `blobs.Count < num` の場合、個数不一致例外を送出する。 |
+| 5 | 候補抽出 | `LargestBlob()` を `num` 回取得して `listBlobs` に退避し、採用済みを `blobs.Remove` で除外する。 |
+| 6 | 再チェック | `listBlobs.Count != num` の場合、個数不一致例外を送出する。 |
+| 7 | 列起点選定 | 各列 `x` ごとに、残候補の最小X重心Blobを起点として `aryClmBlob[0]` に登録する。 |
+| 8 | 上下探索で列充填 | 起点から上方向/下方向の最近傍Blobを角度条件（上:-45〜-135°、下:45〜135°）で探索し、距離が短い側を順次採用する。 |
+| 9 | 列内Yソート | 列長 `tileNum[x]` 分が揃ったら `Centroid.Y` 昇順でソートし、`aryBlob[x]` に確定する。 |
+| 10 | 全列完了 | 全列の整列完了後、呼出元へ `aryBlob` を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力集合 | `blobs` が有効なBlob集合であること | `No tiles found.` 例外で中断 |
+| 列定義 | `tileNum` が列ごとの期待数を正しく保持していること | 総数不整合または列探索失敗 |
+| 期待個数 | 候補Blobが `sum(tileNum)` 以上存在すること | 個数不一致例外で中断 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `aryBlob` | 列ごとの整列済みタイル配列を構築 | 手順1,9 |
+| `listBlobs` | 作業中の候補集合を保持し、採用に応じて削除 | 手順5,7-8 |
+| `u_ref` / `d_ref` | 上下探索の基準重心を更新 | 手順8 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `uBlob.index == -1 && dBlob.index == -1` | 列探索失敗として `Fail to sort blob. (H=x)` を送出する。 |
+| `dBlob.index == -1 || uBlob.dist <= dBlob.dist` | 上側候補を採用し、`u_ref` を更新する。 |
+| `uBlob.index == -1 || uBlob.dist > dBlob.dist` | 下側候補を採用し、`d_ref` を更新する。 |
+| `index == tileNum[x]` | 当該列の探索を終了し、Yソート後に次列へ進む。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `blobs.LargestBlob` | 面積上位Blob抽出 | 同期 |
+| `blobs.Remove` | 採用済みBlobの除外 | 同期 |
+| `Math.Sqrt` / `Math.Asin` | 方向角・距離計算 | 同期 |
+| `OrderBy(blob => blob.Centroid.Y)` | 列内のY順ソート | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 入力Blobなし | `blobs == null` | `Exception("No tiles found.")` | 処理中断 |
+| 個数不足/不一致 | `blobs.Count < num` または `listBlobs.Count != num` | `Exception("The number of found tiles is not correct...")` | 処理中断 |
+| 列探索失敗 | 上下候補が見つからない | `Exception("Fail to sort blob. (H=...)")` | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Caller
+    participant P as getTilePos
+    participant B as CvBlobs
+    participant A as aryBlob[][]
+
+    C->>P: getTilePos(blobs, tileNum, out aryBlob)
+    P->>P: num = sum(tileNum)
+    P->>B: LargestBlobをnum回抽出
+    loop 列 x in tileNum
+        P->>P: 最小X起点を登録
+        loop index == tileNum[x] まで
+            P->>P: 上下候補探索 + 距離比較
+        end
+        P->>P: Y座標で列ソート
+        P->>A: aryBlob[x] を確定
+    end
+    P-->>C: aryBlob(out)
+```
+
+#### 8-4-13. calcGapPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void calcGapPos(Mat mat, Mat flat, string measPath)` |
+| 概要 | Gap位置計測用の平均画像にシェーディング補正とマスク処理を施し、補正点位置の推定に使用する2値化GapPos画像 `m_MatGapPos` を生成する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | mat | Mat | Y | GapPos平均化済みの16bit浮動小数点画像 |
+| 2 | flat | Mat | Y | シェーディング補正基準のフラット画像 |
+| 3 | measPath | string | Y | マスクファイル（fn_MaskFile）の参照先パス |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 早期終了 | `MultiControllerTest` 時は処理を行わず即時 `return` する。 |
+| 2 | マスク画像取得 | `MultiController` 時は `m_MatMaskTop` と `m_MatMaskRight` を `BitwiseOr` 合成。その他は `m_MatMask.Clone()` を使用する。 |
+| 3 | フラット平均算出 | マスク有効画素内の `flat`（`Reflection` 時は `flat - black`）輝度総和を計算し、画素数で除算して平均 `avg` を求める。 |
+| 4 | シェーディング補正 | 有効画素ごとに `gain = avg / flat[x,y]` を乗算して輝度を正規化し、16bit補正済み画像 `_mat` を生成する（`Reflection` 時は `mat - black` 差分に対して補正）。 |
+| 5 | 8bit変換 | `_mat` を `1/16` スケールで 8bit グレー画像 `gray` へ変換する。 |
+| 6 | マスク適用 | `gray` にマスクをコピーして `maskedGray` を生成し、マスク領域のみ有効化する。 |
+| 7 | 面積妥当性チェック | `maskedGray` をOtsu2値化して最大BlobサイズとマスクBlobサイズを比較し、差が10px超の場合は検出エラーを送出する（`CaptureTilt` 時スキップ）。 |
+| 8 | GapPos2値化 | `ImageScale_x5` 時は `maskedGray` を5倍に拡大してからOtsu2値化し、`m_MatGapPos` へ格納する。無効時は直接Otsu2値化して格納する。 |
+| 9 | 後処理 | 一時 `Mat`（`gray`/`maskedGray`/`_mat`/`mask`）を解放する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| マスク画像 | `m_MatMask`（または `m_MatMaskTop/Right`）が有効であること | マスク適用時に異常終了 |
+| フラット画像 | `flat` が `mat` と同サイズの有効な画像であること | シェーディング補正が正しく動作しない |
+| GapPos検出 | ハッチパターン点灯時に有効なGap領域が写っていること | 面積チェック例外で中断 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_MatGapPos` | 2値化GapPos画像を更新（旧オブジェクトを解放してから差替え） | 手順8 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `MultiControllerTest` | 処理全体をスキップして即時 `return`。 |
+| `MultiController` | マスクを `BitwiseOr(Top, Right)` で合成する。 |
+| `Reflection` | フラット・入力両方から黒画像を差し引いてシェーディング補正する。 |
+| `CaptureTilt` | 面積妥当性チェック（手順7）をスキップする。 |
+| `ImageScale_x5` | `maskedGray` を5倍に拡大してから2値化し、高解像度GapPos画像を生成する。 |
+| `Coverity` | `using` スコープで中間Mat の例外時リークを防止する。 |
+| `TempFile` | 中間画像（GapPos原画像/補正済み/マスク/GapPos2値）を保存する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | 黒画像読込（Reflection時） | 同期 |
+| `Cv2.BitwiseOr` | Top/Rightマスク合成（MultiController時） | 同期 |
+| `Cv2.Resize` | GapPos画像の5倍拡大（ImageScale_x5時） | 同期 |
+| `CvBlobs` | マスク/GapPos Blobサイズ取得（面積チェック用） | 同期 |
+| `Mat.Threshold(Otsu)` | GapPos最終2値化 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| GapPos検出領域が小さい | `|maskWidth - gapPosWidth| > 10 || |maskHeight - gapPosHeight| > 10` 判定 | `Exception("The detected Gap area size is too small...")` 送出 | `m_MatGapPos` は未更新のまま |
+| 黒画像読込失敗 | `LoadMatBinary` 下位例外（Reflection時） | 呼出元へ再送出 | 処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant G as calcGapGain
+    participant P as calcGapPos
+    participant IMG as MatBinary/flat
+    participant CV as OpenCV
+
+    G->>P: calcGapPos(mat, flat, measPath)
+    alt MultiControllerTest
+        P-->>G: return（スキップ）
+    end
+    P->>P: マスク取得（BitwiseOr or Clone）
+    P->>IMG: avg算出（flat/blackで正規化）
+    P->>CV: シェーディング補正 → _mat
+    P->>CV: 8bit変換 → gray
+    P->>CV: gray × mask → maskedGray
+    alt 非CaptureTilt
+        P->>CV: Blob面積チェック
+        alt 差 > 10px
+            P-->>G: Exception（GapPos面積不足）
+        end
+    end
+    alt ImageScale_x5
+        P->>CV: Resize × 5 → Otsu → m_MatGapPos
+    else 標準
+        P->>CV: Otsu → m_MatGapPos
+    end
+    P-->>G: m_MatGapPos 更新完了
+```
+
+#### 8-4-14. calcCpGainRaw
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void calcCpGainRaw(string measPath)` |
+| 概要 | 指定信号レベルのフラット白画像を平均化・黒差分処理し、`lstGapCamCp` の全補正点に対してゲイン計算（`calcGapGain`）を実行する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | measPath | string | Y | フラット白画像・黒画像の保存先パス（ファイル名に信号レベルを含む） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 進捗更新 | `winProgress` に「Load Gap image」メッセージを表示し、ログへ出力する。 |
+| 2 | フラット白画像平均化 | `measPath + _fn_FlatWhite + "_" + n` を `CaptureNum` 枚読込み、32bit 浮動小数点形式で総和したうえで `CaptureNum` で除算して平均画像 `matAvg` を生成する。 |
+| 3 | 黒画像平均化（任意） | `Reflection` 時は `measPath + _fn_FlatWhite + "_Black_" + n` を `CaptureNum` 枚読込み、同様に平均画像 `matBlack` を生成する。 |
+| 4 | 黒差分適用（任意） | `Reflection` 時は `matAvg` 各画素から `matBlack` を差し引き（負値は0クリップ）、反射成分を除去する。 |
+| 5 | 進捗更新 | `winProgress.PutForward1Step()` で進捗を1ステップ進め、「Calc Gap gain」メッセージを表示する。 |
+| 6 | 信号レベル解析 | `_fn_FlatWhite` のファイル名を `_` で分割し、整数部分を `sigLevel` として取得する。 |
+| 7 | 補正点ゲイン計算 | `lstGapCamCp` 内の全 `GapCamCp` に対して `calcGapGain(matAvg, cp, sigLevel)` を呼出し、コントラスト/輝度を算出する。 |
+| 8 | 後処理 | `matAvg`（および `matBlack`）を解放し、`GC.Collect()` を実行する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `measPath + _fn_FlatWhite + "_" + n` が `CaptureNum` 枚存在すること | `LoadMatBinary` 例外で中断 |
+| 黒画像（任意） | `Reflection` 時は `_Black_n` ファイルが `CaptureNum` 枚存在すること | `LoadMatBinary` 例外で中断 |
+| 補正点状態 | `lstGapCamCp` が `storeGapCp` により初期化済みであること | ゲイン計算が行われない |
+| GapPos画像 | `m_MatGapPos` が `calcGapPos` により生成済みであること | `calcGapGain` 内部で異常 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstGapCamCp[*].lstCellCp[*].GapSwing` | 各補正点の入力レベル別ゲインを蓄積 | 手順7 |
+| `winProgress` | ロード/計算それぞれのメッセージと進捗を更新 | 手順1,5 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `Reflection` | 黒画像平均化と `matAvg - matBlack` 差分処理を実施する。無効時は `matAvg` をそのまま使用する。 |
+| `Coverity` | `using` ブロックで加算用の一時 `Mat` のリークを防止する。 |
+| `TempFile` | 平均化フラット/黒画像・差分結果の中間JPEG、および特定補正点のCSVデータを保存する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `LoadMatBinary` | フラット白/黒画像の読込 | 同期 |
+| `calcGapGain` | 補正点ごとのゲイン計算 | 同期 |
+| `winProgress.ShowMessage/PutForward1Step` | UI進捗表示 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 画像読込失敗 | `LoadMatBinary` 下位例外 | 呼出元へ再送出 | 一時Matが未解放の可能性（Coverity時は `using` で保護） |
+| ゲイン計算失敗 | `calcGapGain` 下位例外 | 呼出元へ再送出 | 残補正点の処理は中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant G as calcGapGain（上位）
+    participant R as calcCpGainRaw
+    participant IMG as MatBinary
+    participant CG as calcGapGain（下位）
+
+    G->>R: calcCpGainRaw(measPath)
+    loop n=0..CaptureNum-1
+        R->>IMG: LoadMatBinary(_fn_FlatWhite_n)
+    end
+    R->>R: matAvg = 合計 / CaptureNum
+    alt Reflection
+        loop n=0..CaptureNum-1
+            R->>IMG: LoadMatBinary(_fn_FlatWhite_Black_n)
+        end
+        R->>R: matAvg -= matBlack（負値0クリップ）
+    end
+    loop 全GapCamCp
+        R->>CG: calcGapGain(matAvg, cp, sigLevel)
+        CG-->>R: ゲイン蓄積
+    end
+    R->>R: matAvg 解放 + GC.Collect()
+    R-->>G: 完了
+```
+
+#### 8-4-15. calcGapGain（補正点単位）
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe private void calcGapGain(Mat mat, GapCamCp cp, int sigLevel, bool debug = false)` |
+| 概要 | 1補正点の複数トリム領域から Gap 輝度・周辺輝度・コントラストを算出し、端点外挿で `cp.GapGain/Slope/Offset` を更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | mat | Mat | Y | `calcCpGainRaw` で生成した平均化済みフラット画像（32FC1） |
+| 2 | cp | GapCamCp | Y | 補正対象の1点情報（`CamArea`/`Pos`/`Direction` を保持） |
+| 3 | sigLevel | int | Y | 解析中の信号レベル（デバッグ出力ラベルに使用） |
+| 4 | debug | bool | N | `TempFile` 有効時に中間CSVを出力するかのフラグ |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 作業配列初期化 | `gapContrast[]`、`gapBright[]`、`aroundBright[]`（要素数=`TrimAreaNum`）を初期化する。 |
+| 2 | トリム領域切出し | 各 `n` について `cp.CamArea[n]` の矩形を取得し、`mat` から `flat` を切り出す（`RotateRect` 時は `BoundingRect` を使用）。 |
+| 3 | Gapマスク生成 | `m_MatGapPos` の同領域を取り出し、背景マスクとの AND で `maskGap` を作成する。 |
+| 4 | Gap輝度算出 | `target`（必要に応じ拡大）に対し `MeanStdDev(..., maskGap)` を実行し、Gap輝度 `gap` を求める。 |
+| 5 | 周辺マスク生成 | Gap領域を膨張→反転して `maskAround` を作成し、`MeanStdDev(..., maskAround)` で周辺輝度 `around` を求める。 |
+| 6 | 指標蓄積 | `gapContrast[n] = gap/around`、`gapBright[n]`、`aroundBright[n]` を保存する。 |
+| 7 | 代表輝度設定 | `cp.Pos` に応じて先頭または末尾トリム値を `cp.Gap` と `cp.Around` に設定する。 |
+| 8 | 直線近似 | `gapContrast[]` と位置配列から `Point2f(x, y=gapContrast[n])` を `TrimAreaNum` 点生成する。Top系（`TopLeft/TopRight/BottomLeft/BottomRight`）は `x=TrimAreaTopPos[n]`、Right系（`RightTop/RightBottom/LeftTop/LeftBottom`）は `x=TrimAreaRightPos[n]` を使い、`Cv2.FitLine(DistanceTypes.L1, 0, 0.01, 0.01)` の戻り値 `line` から `a = line.Vy / line.Vx`、`b = -line.Vy / line.Vx * line.X1 + line.Y1` を算出する。 |
+| 9 | 端点外挿 | 手順8で得た直線 `y = a*x + b` に対し、Top系は Left側（`TopLeft`/`BottomLeft`）で `cp.GapGain = a*0 + b`、Right側（`TopRight`/`BottomRight`）で `cp.GapGain = a*(modDx - 1) + b` を採用する。Right系は Top側（`RightTop`/`LeftTop`）で `cp.GapGain = a*0 + b`、Bottom側（`RightBottom`/`LeftBottom`）で `cp.GapGain = a*(modDy - 1) + b` を採用し、モジュール端の推定コントラストを補正ゲイン値として確定する。 |
+| 10 | 係数反映 | 手順8で得た近似係数を `cp.Slope = a`、`cp.Offset = b` として保持する。これらはレベルスイング集約時に `GapMeas(level, slope, offset, gapGain)` の入力として `listGapSwing` へ格納され、後段の `calcGapGain(List<UnitInfo>, string)` で `TargetSigLevel`・`CurrentContrast`・最終 `Gain` を算出する基礎データとして再利用される。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 画像入力 | `mat` が有効で、`cp.CamArea[]` が画像範囲内に収まること | 切出し時に下位例外 |
+| GapPos | `m_MatGapPos` が生成済みであること | マスク生成で異常 |
+| 幾何情報 | `TrimAreaNum`、`TrimAreaTopPos/RightPos`、`modDx/modDy` が設定済みであること | 近似・外挿結果が不正 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `cp.Gap` | 代表トリム領域の Gap 輝度 | 手順7 |
+| `cp.Around` | 代表トリム領域の周辺輝度 | 手順7 |
+| `cp.GapGain` | 端点外挿した補正ゲイン | 手順9 |
+| `cp.Slope` / `cp.Offset` | 近似直線係数 | 手順10 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ImageScale_x5` | 切出し画像を5倍へ拡大して `m_MatGapPos`（5倍座標）と整合させて計算する。 |
+| `RotateRect` | 回転矩形頂点から `matMaskRotate` を生成し、Gap/周辺マスクを有効領域内に制限する。 |
+| `Coverity` | `using` スコープで `invGap`/`localGapDilate` など一時 `Mat` の解放漏れを抑止する。 |
+| `CorrectTargetEdge` | `cp.Pos` 判定対象を拡張し、Bottom/Left 側端点の `GapGain` 外挿条件を有効化する。 |
+| `TempFile && debug` | `flat.csv`、`GapBright.csv`、`AroundBright.csv`、`GapContrast.csv` 等の中間CSVを出力する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Cv2.Resize` | `ImageScale_x5` 時の切出し画像拡大 | 同期 |
+| `Cv2.BitwiseAnd/BitwiseNot/Dilate` | Gap/周辺マスク生成 | 同期 |
+| `Cv2.MeanStdDev` | Gap輝度・周辺輝度の統計算出 | 同期 |
+| `Cv2.FitLine` | トリム列のコントラスト直線近似 | 同期 |
+
+例外時仕様（中断含む）
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 切出し範囲不正 | `mat[startY,endY,startX,endX]` 等の下位例外 | 呼出元へ再送出 | 当該補正点で中断 |
+| マスク演算失敗 | OpenCV演算の下位例外 | 呼出元へ再送出 | 当該レベル処理を中断 |
+| 近似不能 | 点群異常（`FitLine` 下位例外） | 呼出元へ再送出 | `cp` 更新は未完了 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant R as calcCpGainRaw
+    participant C as calcGapGain(mat, cp)
+    participant CV as OpenCV
+
+    R->>C: calcGapGain(matAvg, cp, sigLevel)
+    loop n=0..TrimAreaNum-1
+        C->>CV: 切出し(flat/target) + Gap/周辺マスク生成
+        C->>CV: MeanStdDev(gap, around)
+        C->>C: gapContrast[n], gapBright[n], aroundBright[n] を更新
+    end
+    C->>CV: FitLine(TrimAreaPos, gapContrast)
+    C->>C: cp.Gap / cp.Around / cp.GapGain / cp.Slope / cp.Offset 更新
+    C-->>R: 完了
+```
 
 ---
 
@@ -1114,6 +4327,24 @@ sequenceDiagram
 |------|------|--------|----------|
 | 0.1 | 2026/04/16 | システム分析チーム | 新規作成（GapCamera.cs主体） |
 | 0.2 | 2026/04/16 | システム分析チーム | 8章をメソッド単位の小見出し形式へ細分化 |
+| 0.3 | 2026/04/17 | システム分析チーム | 8章の粒度・表記を最終統一（8-1〜8-4詳細化、図追加、引数名統一） |
+| 0.4 | 2026/04/17 | システム分析チーム | 8-4へ `calcMoireCheckArea` / `checkMoire` を追加（モアレ判定仕様を詳細化） |
+| 0.5 | 2026/04/17 | システム分析チーム | 8-2へ `captureGapTrimmingAreaImage` を追加（Trimming撮影フロー詳細化） |
+| 0.6 | 2026/04/17 | システム分析チーム | 8-2へ `captureGapFlatImageSwing` を追加（レベルスイング撮影フロー詳細化） |
+| 0.7 | 2026/04/17 | システム分析チーム | 8-4へ `calcGapGain` を追加（ゲイン推定フロー詳細化） |
+| 0.8 | 2026/04/17 | システム分析チーム | 8-4へ `makeTargetArea` を追加（対象マスク生成とサチリ判定を詳細化） |
+| 0.9 | 2026/04/17 | システム分析チーム | 8-4-5 `storeGapCp` を最新実装分岐に合わせて同粒度化（状態更新・分岐・例外仕様を補強） |
+| 1.0 | 2026/04/17 | システム分析チーム | 8-4-10 `getTrimmingAreaGap` を追加（トリミング領域抽出フローを条件分岐込みで詳細化） |
+| 1.1 | 2026/04/17 | システム分析チーム | 8-4-11 `getTilePosition` を追加（タイル列整列ロジックと失敗条件を詳細化） |
+| 1.2 | 2026/04/17 | システム分析チーム | 8-4-12 `getTilePos` を追加（列別可変タイル整列ロジックを詳細化） |
+| 1.3 | 2026/04/17 | システム分析チーム | 8-4-5 `storeGapCp` の引数定義を表形式へ統一し、章内の粒度を整合 |
+| 1.4 | 2026/04/17 | システム分析チーム | 8-4-6/8-4-7 の引数定義を表形式へ統一し、章内フォーマットを整合 |
+| 1.5 | 2026/04/17 | システム分析チーム | 8-4-13 `calcGapPos` を追加（GapPos2値化フローとシェーディング補正・面積チェックを詳細化） |
+| 1.6 | 2026/04/17 | システム分析チーム | 8-4-14 `calcCpGainRaw` を追加（フラット白平均化・黒差分・補正点ゲイン計算フローを詳細化） |
+| 1.7 | 2026/04/17 | システム分析チーム | 8-4-15 `calcGapGain(Mat, GapCamCp, int, bool)` を追加（補正点単位のマスク統計・線形近似・端点外挿を詳細化） |
+| 1.8 | 2026/04/17 | システム分析チーム | 8-4-8 `calcGapGain(List<UnitInfo>, string)` を再詳細化（引数表・分岐・出力/復号フローを実装準拠で補強） |
+| 1.9 | 2026/04/17 | システム分析チーム | `SetCamPosTarget` を追加（LED仕様判定・3D→2D変換・Z距離/はみ出しチェックフローを詳細化、現行構成では 8-1-5） |
+| 2.0 | 2026/04/17 | システム分析チーム | 8章の記載順を実装順に整理し、`SetCamPosTarget` を 8-4 から 8-1 へ移動、見出し番号を再採番 |
 
 ---
 

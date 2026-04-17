@@ -13,14 +13,14 @@
 
 ### 1-1. To-Be業務プロセス概要
 
-目地補正（カメラ）機能は、LDSの目地補正作業における「計測」「補正値算出」「ROM書込み」を一連で実行し、手作業調整を最小化することを目的とする。
+Gap補正（カメラ）機能はLDSのGap補正作業における「計測」「補正値算出」「ROM書込み」を一連で実行し、手作業調整を最小化することを目的とする。
 
 以下をシステム化し、再現性と作業効率を向上させる。
 
 - 対象Cabinetの矩形チェックと処理対象確定
 - カメラ位置合わせ
 - 内蔵パターンを表示したCabinetの撮影
-- 撮影画像から目地輝度比を計測し、計測結果に基づいて目地補正値を算出
+- 撮影画像からGap輝度比を計測し、計測結果に基づいてGap補正値を算出
 - 補正値のController ROM書込み
 - 補正値バックアップ/リストア
 
@@ -31,8 +31,8 @@
 | 業務名 | 業務内容 | ルール・制約 |
 |--------|----------|-------------|
 | 位置合わせ | カメラ位置合わせを実施し測定可能状態を作る | 対象Cabinetは選択済みかつ矩形であること |
-| 目地輝度比計測 | 内蔵パターンを表示したCabinetの撮影画像を取得し、目地輝度比を算出する | 計測中は他操作を抑止し、進捗表示を行う |
-| 目地輝度補正 | 目地輝度比計測結果を用いて補正計算用データを生成し、Controllerに転送する | 計測完了後に実施し、補正回数上限、評価有無の設定値に従う |
+| Gap輝度比計測 | 内蔵パターンを表示したCabinetの撮影画像を取得し、Gap輝度比を算出する | 計測中は他操作を拳止し、進捕表示を行う |
+| Gap補正 | Gap輝度比計測結果を用いて補正計算用データを生成し、Controllerに転送する | 計測完了後に実施し、補正回数上限、評価有無の設定値に従う |
 | ROM書込み | 補正値をControllerへ反映し再構成を実施 | 書込み時はPanel OFF/ONとReconfigを実行 |
 | バックアップ/リストア | 補正値をXMLへ保存・復元 | ファイル選択UI経由、失敗時はエラー通知 |
 
@@ -67,7 +67,7 @@
 
 | KPI | 現状値 | 目標値 | 達成期限 |
 |-----|--------|--------|---------|
-| 補正後の目地輝度比 | - | ±1.5%以下 | 運用開始時 |
+| 補正後のGap輝度比 | - | ±1.5%以下 | 運用開始時 |
 | 補正実行成功率 | - | 99.0%以上 | 運用開始時 |
 | 補正の処理時間 | - | 30分以内 | 運用開始時 4K2Kサイズ |
 
@@ -79,7 +79,7 @@
 flowchart TD
     A[対象Cabinet選択] --> B[矩形チェック]
     B --> C[カメラ位置合わせ]
-    C --> D[目地輝度比計測]
+    C --> D[Gap輝度比計測]
     D --> E{補正実施?}
     E -->|Yes| F[補正値算出]
     E -->|No| I[完了]
@@ -95,8 +95,8 @@ flowchart TD
 
 | 対象業務 | 実現手段 | 備考 |
 |----------|----------|------|
-| 目地輝度比計測 | `btnGapCamMeasStart_Click` から `measureGapAsync` 実行 | 進捗・残時間表示あり |
-| 目地輝度補正 | `btnGapCamMeasStart_Click` による計測完了後、`btnGapCamAdjStart_Click` から `adjustGapRegAsync` 実行 | 計測結果が前提。進捗・残時間表示・補正回数上限設定あり |
+| Gap輝度比計測 | `btnGapCamMeasStart_Click` から `measureGapAsync` 実行 | 進捕・残時間表示あり |
+| Gap補正 | `btnGapCamMeasStart_Click` による計測完了後、`btnGapCamAdjStart_Click` から `adjustGapRegAsync` 実行 | 計測結果が前提。進捕・残時間表示・補正回数上限設定あり |
 | ROM書込み | `btnGapCamRomStart_Click` / `romSaveAsync` | ReconfigとPanel ON/OFFを伴う |
 | 補正値バックアップ | `btnGapCamBackup_Click` / `backupGapRegAsync` | XML保存 |
 | 補正値リストア | `btnGapCamRestore_Click` / `restoreGapRegAsync` | 通常/一括書込みの2系統 |
@@ -125,7 +125,7 @@ flowchart TD
 
 ### 2-1. システム全体像
 
-GapCamera機能はCAS内の目地補正サブシステムとして動作し、カメラ画像解析・Controller通信・補正値管理を統合する。
+GapCamera機能はCAS内のGap補正サブシステムとして動作し、カメラ画像解析・Controller通信・補正値管理を統合する。
 
 ```mermaid
 flowchart LR
@@ -143,8 +143,8 @@ flowchart LR
 
 #### 適用範囲
 
-- 目地輝度比計測・進捗管理・中断
-- 計測後の目地輝度補正・進捗管理・中断・結果評価
+- Gap輝度比計測・進捗管理・中断
+- 計測後のGap補正・進捕管理・中断・結果評価
 - ROM書込み（補正値反映）
 - 補正値バックアップ/リストア
 - カメラ位置合わせ支援と表示更新
@@ -153,7 +153,7 @@ flowchart LR
 
 | システム名 | 影響内容 |
 |-----------|---------|
-| CameraControl/CameraControllerSharp | 撮影条件・撮影処理の仕様変更が目地輝度比計測に影響 |
+| CameraControl/CameraControllerSharp | 撮影条件・撮影処理の他確変更がGap輝度比計測に影響 |
 | Controller（SDCP） | 補正値書込み、Reconfig、Panel制御の応答に依存 |
 | CAS設定データ（Settings） | 測定レベル、撮影条件、待ち時間など運用値に影響 |
 
@@ -174,8 +174,8 @@ flowchart LR
 |-----|--------|----------|--------|
 | 2-4-01 | 対象Cabinet妥当性確認 | 選択Cabinetの存在・矩形性を検証する | 高 |
 | 2-4-02 | カメラ位置合わせ | 位置合わせモードの開始/停止、プレビュー更新 | 高 |
-| 2-4-03 | 目地輝度比計測 | 目地輝度比の計測を実行し結果データを生成 | 高 |
-| 2-4-04 | 目地補正 | 計測結果に基づく補正値算出と結果評価表示を実行 | 高 |
+| 2-4-03 | Gap輝度比計測 | Gap輝度比の計測を実行し結果データを生成 | 高 |
+| 2-4-04 | Gap補正 | 計測結果に基づく補正値算出と結果評価表示を実行 | 高 |
 | 2-4-05 | ROM書込み | 補正値をControllerへ書込み反映 | 高 |
 | 2-4-06 | 補正値バックアップ | 補正値をXMLファイルへ保存 | 中 |
 | 2-4-07 | 補正値リストア | XMLから補正値を読み込み適用 | 高 |
@@ -190,9 +190,9 @@ flowchart LR
 | データ名 | 主要項目 | 関連データ | 備考 |
 |----------|----------|-----------|------|
 | GapCamCorrectionValue | Cabinet情報、CvUnit、AryCvCell | XMLバックアップ | 補正値の中核データ |
-| GapCellCorrectValue | 目地補正値（Moduleあたり4辺×2ケ） | Module書込みコマンド | 初期値128基準 |
+| GapCellCorrectValue | Gap補正値（Moduleあたり4迺×2ケ） | Module書込みコマンド | 初期値128基準 |
 | UnitInfo | ControllerID、PortNo、UnitNo、座標 | allocInfo、dicController | 対象Cabinet識別 |
-| 撮影画像 | MeasArea<br>GapPos, Top, Right<br>Gap_Before, Gap_Result<br> | 対象エリア<br>目地輝度比計測エリア<br>目地輝度比スイング | 測定フォルダに保存 |
+| 撮影画像 | MeasArea<br>GapPos, Top, Right<br>Gap_Before, Gap_Result<br> | 対象エリア<br>Gap輝度比計測エリア<br>Gap輝度比スイング | 測定フォルダに保存 |
 | UserSetting | ThroughMode等作業前設定 | setUserSetting | 処理後復帰対象 |
 
 ---

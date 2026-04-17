@@ -17,7 +17,7 @@
 
 #### システム概要
 
-GapCamera機能はCAS内の目地補正処理機能であり、対象Cabinetの選択、カメラ位置合わせ、計測、計測結果に基づく補正、ROM書込み、補正値バックアップ/リストアを提供する。
+GapCamera機能はCAS内のGap補正処理機能であり、対象Cabinetの選択、カメラ位置合わせ、計測、計測結果に基づく補正、ROM書込み、補正値バックアップ/リストアを提供する。
 
 本機能は `CAS/Functions/GapCamera.cs` を中心に実装され、以下の外部・内部要素と連携する。
 
@@ -83,7 +83,7 @@ flowchart TD
 
 | No. | アプリケーション名 | 区分 | 主な役割 | 利用者・利用部門 | 備考 |
 |-----|--------------------|------|----------|------------------|------|
-| 1 | CAS（GapCamera） | 業務アプリ機能 | 目地補正の計測・補正・書込み操作 | オペレータ | 本設計対象 |
+| 1 | CAS（GapCamera） | 業務アプリ機能 | Gap補正の計測・補正・書込み操作 | オペレータ | 本設計対象 |
 | 2 | CameraControl | 共通ライブラリ | カメラの撮影/AF設定 | CAS内部利用 | DLL参照 |
 | 3 | Controller | 外部制御機器 | 補正値の反映・再構成 | CAS内部利用 | SDCP通信 |
 
@@ -102,8 +102,8 @@ flowchart TD
 | アプリケーション名 | 機能ID | 機能名 | 機能概要 | 利用者 | 優先度 | 備考 |
 |--------------------|--------|--------|----------|--------|--------|------|
 | CAS GapCamera | GAP-F01 | カメラ位置合わせ | 対象Cabinetの妥当性検証後、内蔵パターンを表示・撮影して、カメラ位置合わせを実行 | オペレータ | 高 | `tbtnGapCamSetPos_Click`, `timerGapCam_Tick` |
-| CAS GapCamera | GAP-F02 | 目地輝度比計測 | 対象Cabinetを撮影・解析し目地輝度比を算出 | オペレータ | 高 | `btnGapCamMeasStart_Click`, `measureGapAsync` |
-| CAS GapCamera | GAP-F03 | 目地輝度補正 | GAP-F02で生成した計測結果を用いて補正計算用データを作成 | オペレータ | 高 | 計測完了後に `btnGapCamAdjStart_Click`, `adjustGapRegAsync` |
+| CAS GapCamera | GAP-F02 | Gap輝度比計測 | 対象Cabinetを撮影・解析しGap輝度比を算出 | オペレータ | 高 | `btnGapCamMeasStart_Click`, `measureGapAsync` |
+| CAS GapCamera | GAP-F03 | Gap補正 | GAP-F02で生成した計測結果を用いて補正計算用データを作成 | オペレータ | 高 | 計測完了後に `btnGapCamAdjStart_Click`, `adjustGapRegAsync` |
 | CAS GapCamera | GAP-F04 | ROM書込み | 補正値をControllerへ反映し再構成 | オペレータ | 高 | `btnGapCamRomStart_Click`, `romSaveAsync` |
 | CAS GapCamera | GAP-F05 | バックアップ | 補正値をXML保存 | オペレータ | 中 | `btnGapCamBackup_Click`, `backupGapRegAsync` |
 | CAS GapCamera | GAP-F06 | リストア | XML補正値を読み込み反映（通常/一括） | オペレータ | 高 | `restoreGapRegAsync`, `restoreBulkGapRegAsync` |
@@ -291,15 +291,15 @@ flowchart TD
 
 ---
 
-#### 2-2-2. 機能名：目地輝度比計測機能
+#### 2-2-2. 機能名：Gap輝度比計測機能
 
 ##### 2-2-2-1. 機能概要
 
 | 項目 | 内容 |
 |------|------|
 | 機能ID | GAP-F02 |
-| 機能名 | 目地輝度比計測機能 |
-| 機能概要 | 対象Cabinetの撮影と画像解析を実行し、目地輝度比を算出する |
+| 機能名 | Gap輝度比計測機能 |
+| 機能概要 | 対象Cabinetの撮影と画像解析を実行し、Gap輝度比を算出する |
 | 利用者 | オペレータ |
 | 起動契機 | 計測開始ボタン押下（`btnGapCamMeasStart_Click`） |
 | 入力 | 選択Cabinet、GapCam設定、撮影条件、中断指示 |
@@ -410,7 +410,7 @@ flowchart LR
 
 | 項目 | 内容 |
 |------|------|
-| 処理名 | 目地輝度比計測処理 |
+| 処理名 | Gap輝度比計測処理 |
 | 処理種別 | オンライン |
 | 処理概要 | 撮影・解析・結果保存を実施 |
 | 実行契機 | 計測開始ボタン |
@@ -449,7 +449,7 @@ flowchart LR
 | 項目 | 内容 |
 |------|------|
 | 機能ID | GAP-F03, GAP-F04 |
-| 機能名 | 目地輝度補正・ROM書込み機能 |
+| 機能名 | Gap補正・ROM書込み機能 |
 | 機能概要 | 計測結果から補正値を算出し、Controllerへ反映してROM書込みする |
 | 利用者 | オペレータ |
 | 起動契機 | 計測完了後の補正開始 / Write Data押下 |
@@ -565,7 +565,7 @@ flowchart LR
 
 | 項目 | 内容 |
 |------|------|
-| 処理名 | 目地輝度補正/ROM書込み処理 |
+| 処理名 | Gap補正/ROM書込み処理 |
 | 処理種別 | オンライン |
 | 処理概要 | 計測結果読込、補正値算出、Controller反映、再構成 |
 | 実行契機 | 計測完了後の補正開始/Write Data |
@@ -575,7 +575,7 @@ flowchart LR
 
 | 区分 | 項目名 | 説明 | 型 | 桁数 | 必須 | 備考 |
 |------|--------|------|----|------|------|------|
-| 入力 | 目地輝度比計測結果 | 補正値の計算元 | List<GapCamCorrectionValue> | - | 必須 | 計測後 |
+| 入力 | Gap輝度比計測結果 | 補正値の計算元 | List<GapCamCorrectionValue> | - | 必須 | 計測後 |
 | 入力 | 補正回数 | 補正ループ上限 | int | - | 必須 | UI選択 |
 | 出力 | 補正値 | Cell補正値 | GapCellCorrectValue | - | 必須 | 設備反映 |
 | 出力 | 書込み結果 | 成否情報 | bool | - | 必須 | メッセージ表示 |
@@ -723,7 +723,7 @@ flowchart LR
 
 | 項目 | 内容 |
 |------|------|
-| 処理名 | 目地輝度補正値バックアップ/リストア |
+| 処理名 | Gap補正値バックアップ/リストア |
 | 処理種別 | オンライン |
 | 処理概要 | 補正値の外部保存/復元 |
 | 実行契機 | ユーザー操作 |
@@ -739,7 +739,7 @@ flowchart LR
 
 ###### データ処理内容
 
-1. 目地輝度補正値の収集またはXML読込
+1. Gap補正値の収集またはXML読込
 2. GapCamCorrectionValueへ変換
 3. 保存またはController反映
 4. 必要時にWrite/Reconfig
@@ -762,9 +762,9 @@ flowchart LR
 
 | データ名 | 概要 | 保持期間 | 更新主体 | 備考 |
 |----------|------|----------|----------|------|
-| 目地補正値XML | 目地補正値の保存 | 運用保管期間 | オペレータ操作 | XML |
+| Gap補正値XML | Gap補正値の保存 | 運用保管期間 | オペレータ操作 | XML |
 | 計測画像ファイル | 計測時撮影画像 | 測定フォルダ世代管理 | 計測処理 | RAW等 |
-| 実行ログ | 処理履歴・進捗ログ | 世代管理ポリシーに従う | 目地輝度計測・目地輝度補正処理 | `saveLog` |
+| 実行ログ | 処理履歴・進捕ログ | 世代管理ポリシーに従う | Gap計測・Gap補正処理 | `saveLog` |
 
 #### ERD
 
@@ -848,12 +848,12 @@ flowchart LR
 
 | 用語 | 説明 |
 |------|------|
-| 目地輝度比 | Module間の距離に応じて見える明線/暗線と、その周囲の明るさ比 |
-| 目地輝度補正 | Module間目地の見え方を改善するための補正 |
+| Gap輝度比 | Module間の距離に応じて見える明線/暗線と、その周囲の明るさ比 |
+| Gap補正 | Module間Gapの見え方を改善するための補正 |
 | ROM書込み | 補正値を装置側へ確定反映する処理 |
 | Reconfig | Controllerへ再構成要求を送信する処理 |
 | ThroughMode | 計測/位置合わせ時の表示・画質設定モード |
-| GapCamCorrectionValue | 目地輝度補正値を保持するデータ構造 |
+| GapCamCorrectionValue | Gap補正値を保持するデータ構造 |
 | SDCP | Controller制御に使用する通信コマンド体系 |
 
 ---
