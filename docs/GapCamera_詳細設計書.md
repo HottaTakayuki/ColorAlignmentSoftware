@@ -840,9 +840,9 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `backupGapRegAsync` | Gap補正値のXMLバックアップ本体 | 非同期（`Task.Run`） |
-| `WindowProgress` | 処理進捗の表示 | 同期 |
-| `ShowMessageWindow` / `WindowMessage` | 異常/完了通知 | 同期 |
+| `backupGapRegAsync` | Gap補正値のXMLバックアップを実行する | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗を表示する | 同期 |
+| `ShowMessageWindow` / `WindowMessage` | 異常と完了を通知する | 同期 |
 
 例外時仕様
 
@@ -915,9 +915,9 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `restoreGapRegAsync` | 補正値復元（通常設定） | 非同期（`Task.Run`） |
-| `restoreBulkGapRegAsync` | 補正値復元（一括設定） | 非同期（`Task.Run`） |
-| `WindowProgress` | 処理進捗の表示 | 同期 |
+| `restoreGapRegAsync` | 補正値復元を実行する - 通常設定 | 非同期（`Task.Run`） |
+| `restoreBulkGapRegAsync` | 補正値復元を実行する - 一括設定 | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗を表示する | 同期 |
 
 例外時仕様
 
@@ -994,9 +994,9 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `restoreBulkGapRegAsync` | 補正値復元（一括設定） | 非同期（`Task.Run`） |
-| `WindowProgress` | 処理進捗の表示 | 同期 |
-| `WindowMessage` | 完了/失敗通知 | 同期 |
+| `restoreBulkGapRegAsync` | 補正値復元を実行する - 一括設定 | 非同期（`Task.Run`） |
+| `WindowProgress` | 処理進捗を表示する | 同期 |
+| `WindowMessage` | 完了と失敗を通知する | 同期 |
 
 例外時仕様
 
@@ -1069,10 +1069,10 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `CheckSelectedUnits` | 位置合わせ対象の妥当性検証 | 同期 |
-| `getUserSettingSetPos` / `setAdjustSettingSetPos` | 位置合わせ用画質設定の退避・適用 | 同期 |
-| `AutoFocus` | AF実行 | 同期 |
-| `SetCamPosTarget` | 目標位置マーカー生成 | 同期 |
+| `CheckSelectedUnits` | 位置合わせ対象の妥当性を検証する | 同期 |
+| `getUserSettingSetPos` / `setAdjustSettingSetPos` | 位置合わせ用画質設定を退避・適用する | 同期 |
+| `AutoFocus` | AFを実行する | 同期 |
+| `SetCamPosTarget` | 目標位置マーカーを生成する | 同期 |
 
 例外時仕様
 
@@ -1256,9 +1256,9 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `AdjustCameraPosition` / `SetPosMain` | 位置合わせ更新本体 | 同期 |
-| `SetThroughMode` / `setUserSettingSetPos` | 例外時の設定復帰 | 同期 |
-| `stopIntSig` | 内部信号停止 | 同期 |
+| `AdjustCameraPosition` / `SetPosMain` | 位置合わせを更新する | 同期 |
+| `SetThroughMode` / `setUserSettingSetPos` | 例外時に設定を復帰する | 同期 |
+| `stopIntSig` | 内部信号を停止する | 同期 |
 
 例外時仕様
 
@@ -1336,11 +1336,14 @@ UI状態遷移
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `CheckSelectedUnits` | 対象Cabinet妥当性検証 | 同期 |
-| `tbtnGapCamSetPos_Click` | 位置合わせ停止遷移 | 同期 |
-| `measureGapAsync` | Gap計測主処理（撮像・解析・保存） | 非同期（`Task.Run`） |
-| `SetThroughMode` / `setUserSetting` | カメラ設定の通常復帰 | 同期（`finally`で保証） |
-| `dispGapResult` | 失敗時結果表示更新 | 同期 |
+| `CheckSelectedUnits` | 対象Cabinetの妥当性を検証する | 同期 |
+| `tbtnGapCamSetPos_Click` | 位置合わせ停止へ遷移する | 同期 |
+| `clearGapResult` | Gap計測結果表示を初期化する | 同期 |
+| `initialGapCameraMeasurementProcessSec` | 進捗見積り時間を算出する | 同期 |
+| `saveLog` | 計測開始と作業ディレクトリ生成を記録する | 同期 |
+| `measureGapAsync` | Gap計測主処理を実行する | 非同期（`Task.Run`） |
+| `SetThroughMode` / `setUserSetting` | カメラ設定を通常状態へ復帰する | 同期（`finally`で保証） |
+| `dispGapResult` | 失敗時結果表示を更新する | 同期 |
 
 例外時仕様（中断含む）
 
@@ -1451,9 +1454,16 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `adjustGapRegAsync` | Gap補正主処理 | 非同期（`Task.Run`） |
-| `initialGapCameraAdjustmentProcessSec` | 進捗見積り時間算出 | 同期 |
-| `SetThroughMode` / `setUserSetting` | finallyでの設定復帰 | 同期 |
+| `CheckSelectedUnits` | 対象Cabinetの妥当性を検証する | 同期 |
+| `tbtnGapCamSetPos_Click` | 位置合わせ停止へ遷移する | 同期 |
+| `clearGapResult` | Gap補正結果表示を初期化する | 同期 |
+| `adjustGapRegAsync` | Gap補正主処理を実行する | 非同期（`Task.Run`） |
+| `initialGapCameraAdjustmentProcessSec` | 進捗見積り時間を算出する | 同期 |
+| `saveLog` | 補正開始と進捗準備を記録する | 同期 |
+| `SetThroughMode` / `setUserSetting` | `finally` で設定を復帰する | 同期 |
+| `initialGapCameraROMWriteProcessSec` | Auto_WriteData 時のROM書込み進捗見積りを算出する | 同期 |
+| `romSaveAsync` | Auto_WriteData 有効時にROM書込みを実行する | 非同期（`Task.Run`） |
+| `dispGapResult` | 失敗時結果表示を更新する | 同期 |
 
 例外時仕様（中断含む）
 
@@ -1538,9 +1548,9 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `CheckSelectedUnits` | 書込み対象の妥当性検証 | 同期 |
-| `romSaveAsync` | ROM書込み主処理 | 非同期（`Task.Run`） |
-| `dispGapResult` | 失敗時表示更新 | 同期 |
+| `CheckSelectedUnits` | 書込み対象の妥当性を検証する | 同期 |
+| `romSaveAsync` | ROM書込み主処理を実行する | 非同期（`Task.Run`） |
+| `dispGapResult` | 失敗時結果表示を更新する | 同期 |
 
 例外時仕様
 
@@ -1641,11 +1651,11 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `captureCamPos` | 位置合わせ用画像取得 | 同期 |
-| `detectTileCamPos` / `detectSatAreaCamPos` | タイル・飽和領域抽出 | 同期 |
-| `getTilePosition` | タイル点の行列整列 | 同期 |
-| `estimateCamPos` / `MoveCabinetPos` | カメラ姿勢推定と座標反映 | 同期 |
-| `SetThroughMode` / `setUserSettingSetPos` / `stopIntSig` | 位置合わせ終了時の復帰処理 | 同期 |
+| `captureCamPos` | 位置合わせ用画像を取得する | 同期 |
+| `detectTileCamPos` / `detectSatAreaCamPos` | タイルと飽和領域を抽出する | 同期 |
+| `getTilePosition` | タイル点を行列整列する | 同期 |
+| `estimateCamPos` / `MoveCabinetPos` | カメラ姿勢を推定し座標へ反映する | 同期 |
+| `SetThroughMode` / `setUserSettingSetPos` / `stopIntSig` | 位置合わせ終了時の設定復帰と信号停止を実行する | 同期 |
 
 例外時仕様
 
@@ -1735,12 +1745,12 @@ sequenceDiagram
 |----------|------|--------------|
 | `CheckOpenCvSharpDll` | 解析ライブラリ事前検証 | 同期 |
 | `outputGapCamTargetArea_EdgeExpand` | 対象コントローラ抽出 | 同期 |
-| `getUserSetting` / `setAdjustSetting` / `setUserSetting` | 画質設定の退避・適用・復元 | 同期 |
-| `AutoFocus` | AF実行 | 同期 |
-| `SetCamPosTarget` / `GetCameraPosition` | カメラ位置基準設定・姿勢取得 | 同期 |
-| `captureGapImages` | 計測画像取得 | 同期 |
-| `calcGapGain` | 画像解析・補正値算出用データ生成 | 同期 |
-| `dispGapResult` | 計測結果表示更新 | 同期 |
+| `getUserSetting` / `setAdjustSetting` / `setUserSetting` | 画質設定を退避・適用・復元する | 同期 |
+| `AutoFocus` | AFを実行する | 同期 |
+| `SetCamPosTarget` / `GetCameraPosition` | カメラ位置基準を設定し姿勢を取得する | 同期 |
+| `captureGapImages` | 計測画像を取得する | 同期 |
+| `calcGapGain` | 画像解析と補正値算出用データを生成する | 同期 |
+| `dispGapResult` | 計測結果表示を更新する | 同期 |
 
 条件分岐仕様
 
@@ -5205,6 +5215,348 @@ sequenceDiagram
     end
 ```
 
+#### 8-4-19. dispGapResult
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `async private void dispGapResult(bool error = false)` |
+| 概要 | Gap計測・調整結果を集計してUIへ表示する。エラー時は Before/Result/Measure 全判定欄を NG（赤）に設定する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | error | bool | N | エラー強制フラグ（既定 false） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | エラー時即時設定 | `error == true` 時は Before/Result/Measure の判定テキストを `"NG"` へ更新して return する。 |
+| 2 | コントラスト配列初期化 | `m_GapContrast` / `m_WarningCorrectValue` を Cabinet×Module×Position で確保し NaN / true で初期化する。 |
+| 3 | 補正点集計 | `lstGapCamCp` の全補正点を走査し、GapGain から TargetGain を引いた差分を格納して Max/Min/Ave/σを算出する。 |
+| 4 | NG判定 | `AdjustSpec` 超過補正点を NG としてリストアップする。 |
+| 5 | 画面更新 | `m_GapStatus` に応じて Before/Result/Measure の各統計テキストと OK/NG 判定欄を Dispatcher 経由で更新する。 |
+| 6 | 結果画像保存 | `makeResultImage()` でビットマップを生成し BMP・MatBinary で保存後、UI 画像コントロールへ反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 補正点データ | `lstGapCamCp` が設定済みであること | 集計結果が空 / ゼロ除算 |
+| Cabinet構成 | `m_CabinetXNum` / `m_CabinetYNum` が正しく設定済みであること | 配列確保失敗 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `error == true` | Before/Result/Measure を一括 NG 設定して即 return する。 |
+| `m_GapStatus == Before` | Before 欄へ統計値・OK/NG を反映する。 |
+| `m_GapStatus == Result` | Result 欄へ統計値・NG リスト・OK/NG を反映する。 |
+| `m_GapStatus == Measure` | Measure 欄へ統計値・OK/NG を反映する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `btnGapCamMeasStart_Click`（8-1-7） | 計測失敗時の結果反映 | 非同期 |
+| `btnGapCamAdjStart_Click`（8-1-8） | 調整失敗時の結果反映 | 非同期 |
+| `btnGapCamRomStart_Click`（8-1-9） | ROM書込み失敗時の結果反映 | 非同期 |
+| `measureGapAsync`（8-2-1） | 計測完了後の結果表示 | 非同期 |
+| `adjustGapRegAsync`（8-2-2） | 調整完了後の結果表示 | 非同期 |
+| `makeResultImage` | 結果ビットマップを生成する | 同期 |
+| `SaveMatBinary` | 結果画像をMatBinaryとして保存する | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as dispGapResult
+    participant UI as Dispatcher/UI
+
+    CALLER->>M: dispGapResult(error)
+    alt error == true
+        M->>UI: Before/Result/Measure → NG
+        M-->>CALLER: return
+    else 正常
+        M->>M: m_GapContrast 集計
+        M->>M: Max/Min/Ave/σ・NG判定
+        M->>UI: 統計値・OK/NG 表示
+        M->>M: makeResultImage / SaveMatBinary
+        M->>UI: imgGapCam* 更新
+        M-->>CALLER: 完了
+    end
+```
+
+#### 8-4-20. clearGapResult
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `async private void clearGapResult(DispType type)` |
+| 概要 | 指定した表示タイプのGap計測結果表示（判定欄・統計テキスト・画像）を初期化する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | type | DispType | Y | クリア対象の表示タイプ（Before / Result / Measure） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 判定欄クリア | `type` に応じた判定テキストボックスを空白・グレーへ Dispatcher 経由で更新する。 |
+| 2 | 統計欄クリア | Max/Min/PP/3σ/Ave および NG リスト（Result のみ）を空白へ更新する。 |
+| 3 | 画像クリア | `clearResultImage()` でグレーキャンバスを生成し、対象 `imgGapCam*` コントロールへ反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| UI | Dispatcher が利用可能であること | 更新失敗 |
+| type | 有効な DispType 値であること | いずれの分岐にも入らず画像のみクリア |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `type == Before` | Before 判定欄・統計欄をクリアし Before 画像をグレーに戻す。 |
+| `type == Result` | Result 判定欄・統計欄（NG リスト含む）をクリアし Result 画像をグレーに戻す。 |
+| `type == Measure` | Measure 判定欄・統計欄をクリアし Measure 画像をグレーに戻す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `btnGapCamMeasStart_Click`（8-1-7） | 計測開始前の表示初期化 | 非同期 |
+| `btnGapCamAdjStart_Click`（8-1-8） | 調整開始前の表示初期化 | 非同期 |
+| `measureGapAsync`（8-2-1） | 計測状態リセット時の表示初期化 | 非同期 |
+| `clearResultImage` | グレーキャンバスを生成する | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| Dispatcher 失敗 | 下位例外 | 呼出元へ伝播 | UI 未更新のまま継続 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as clearGapResult
+    participant UI as Dispatcher/UI
+
+    CALLER->>M: clearGapResult(type)
+    M->>UI: 判定欄・統計欄を空白/グレーへ
+    M->>M: clearResultImage()
+    M->>UI: imgGapCam* をグレー画像へ
+    M-->>CALLER: 完了
+```
+
+#### 8-4-21. initialGapCameraMeasurementProcessSec
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private int initialGapCameraMeasurementProcessSec(int cabinetCount)` |
+| 概要 | 計測処理の各ステップ推定秒数を算出して `m_AryProcessSec` へ格納し、合計値を返す。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | cabinetCount | int | Y | 対象Cabinet数 |
+
+返り値: int（合計推定秒数）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | ステップ0（初期設定） | `GAP_INITIAL_SETTINGS_SEC` + `USER_SETTING_SEC` + `ADJUST_SETTING_SEC` を算出する。 |
+| 2 | ステップ1（AF） | `AUTO_FOCUS_SEC` を算出する。 |
+| 3 | ステップ2（姿勢取得） | `STORE_CAMERA_POSITION_SEC` を算出する。 |
+| 4 | ステップ3（撮影） | Black/Flat/White/TargetArea/MoireArea/MoireCheck/TopBottom/LeftRight/Gap の各撮影定数を合算する。 |
+| 5 | ステップ4（解析） | TopBottom/LeftRight/Gap 読込と cabinet 数による GapGain 計算時間を合算する。 |
+| 6 | ステップ5（復帰） | `STORE_CAMERA_POSITION_SEC` + `ADJUST_SETTING_SEC` + `USER_SETTING_SEC` を算出する。 |
+| 7 | 格納・返却 | `m_AryProcessSec[6]` へ格納してログ出力し合計を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| `cabinetCount` | 1 以上の正整数であること | ステップ4の乗算値がゼロになる |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 定数群から 6 ステップ合計秒数を算出して返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `btnGapCamMeasStart_Click`（8-1-7） | 進捗タイマ開始前の推定秒数算出 | 同期 |
+| 計測定数群 | 各撮影・処理ステップの定数参照 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 演算オーバーフロー | 下位例外 | 呼出元へ伝播 | タイマ未起動 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as btnGapCamMeasStart_Click
+    participant M as initialGapCameraMeasurementProcessSec
+
+    CALLER->>M: initialGapCameraMeasurementProcessSec(cabinetCount)
+    M->>M: 6ステップ推定秒数算出
+    M->>M: m_AryProcessSec 格納
+    M-->>CALLER: processSec
+```
+
+#### 8-4-22. initialGapCameraAdjustmentProcessSec
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private int initialGapCameraAdjustmentProcessSec(int count)` |
+| 概要 | 調整処理の各ステップ推定秒数を算出して `m_AryProcessSec` へ格納し、合計値を返す。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | count | int | Y | 対象Cabinet数 |
+
+返り値: int（合計推定秒数）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | ステップ0〜4 | 計測処理と同様の定数から初期〜解析までを算出する。 |
+| 2 | ステップ5（補正設定） | `m_EvaluateAdjustmentResult` フラグに応じて、評価撮影あり/なしの2通りで算出する。 |
+| 3 | ステップ6（全白撮影） | `m_EvaluateAdjustmentResult == true` の場合のみ `GAP_CAPTURE_WHITE_IMAGE_SEC + STORE_CAMERA_POSITION_SEC` を追加する。 |
+| 4 | ステップ7（復帰） | `ADJUST_SETTING_SEC + USER_SETTING_SEC` を算出する。 |
+| 5 | 格納・返却 | `m_AryProcessSec[8]` へ格納してログ出力し合計を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| `count` | 1 以上の正整数であること | ステップ4/5 の乗算値がゼロになる |
+| `moduleCount` | 有効な Module 数が設定済みであること | ステップ5 の乗算値が不正になる |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `m_EvaluateAdjustmentResult == true` | 評価用撮影・解析時間をステップ5/6 へ追加する。 |
+| `m_EvaluateAdjustmentResult == false` | 一括補正設定時間のみをステップ5 とし、ステップ6 は 0 にする。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `btnGapCamAdjStart_Click`（8-1-8） | 進捗タイマ開始前の推定秒数算出 | 同期 |
+| 調整定数群 | 各ステップの定数参照 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 演算オーバーフロー | 下位例外 | 呼出元へ伝播 | タイマ未起動 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as btnGapCamAdjStart_Click
+    participant M as initialGapCameraAdjustmentProcessSec
+
+    CALLER->>M: initialGapCameraAdjustmentProcessSec(count)
+    M->>M: 8ステップ推定秒数算出
+    M->>M: m_AryProcessSec 格納
+    M-->>CALLER: processSec
+```
+
+#### 8-4-23. initialGapCameraROMWriteProcessSec
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private int initialGapCameraROMWriteProcessSec()` |
+| 概要 | ROM書込み処理の各ステップ推定秒数を算出して `m_AryProcessSec` へ格納し、合計値を返す。 |
+
+引数
+
+引数: なし
+
+返り値: int（合計推定秒数）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | ステップ定義 | `GAP_WRITE_PANEL_OFF` / `GAP_WRITE_THREAD_SLEEP` / `GAP_WRITE_WRITE_CORRECTION_VALUE` / `GAP_WRITE_THREAD_SLEEP` / `UNIT_RECONFIG_SEC` / `GAP_WRITE_PANEL_ON` の 6 ステップを定義する。 |
+| 2 | 格納・返却 | `m_AryProcessSec[6]` へ格納してログ出力し合計を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 定数 | ROM書込み定数群が正しく定義されていること | 誤った推定時間を返す |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 固定 6 ステップの合計秒数を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `btnGapCamAdjStart_Click`（8-1-8） | Auto_WriteData 時のROM書込み進捗見積りに使用 | 同期 |
+| ROM書込み定数群 | 各ステップの定数参照 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 演算オーバーフロー | 下位例外 | 呼出元へ伝播 | タイマ未起動 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as btnGapCamAdjStart_Click
+    participant M as initialGapCameraROMWriteProcessSec
+
+    CALLER->>M: initialGapCameraROMWriteProcessSec()
+    M->>M: 6ステップ定義 / m_AryProcessSec 格納
+    M-->>CALLER: processSec
+```
+
 ### 8-5. 連携モジュールメソッド
 
 #### 8-5-1. Set3DPoints
@@ -6081,7 +6433,7 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
-| `Cv2.SolvePnP` | 姿勢推定本体 | 同期 |
+| `Cv2.SolvePnP` | 姿勢推定を実行する | 同期 |
 | `Cv2.Rodrigues` | 回転ベクトルから回転行列へ変換 | 同期 |
 | `Marshal.Copy` | `Mat` から配列へ値転送 | 同期 |
 
@@ -6361,6 +6713,9 @@ sequenceDiagram
 | 2.8 | 2026/04/20 | システム分析チーム | 8章冒頭に章構成表を追加し、UfCamera詳細設計書と章立て・節建・粒度（8-1〜8-7）の対応関係を明示 |
 | 2.9 | 2026/04/20 | システム分析チーム | UfCamera詳細設計書と節名語彙を統一するため、8-1〜8-7 の見出し表現を共通化 |
 | 3.0 | 2026/04/20 | システム分析チーム | 8章冒頭の章構成表について「主な責務」欄の語彙をUfCamera詳細設計書と完全一致に統一 |
+| 3.1 | 2026/04/20 | システム分析チーム | 8章全節を実装照合し、8-1-7/8-1-8 の「主要呼出し先」に clearGapResult・initialGapCamera*ProcessSec・saveLog 等の記載漏れを補完 |
+| 3.2 | 2026/04/20 | システム分析チーム | UfCamera詳細設計書との完全整合に向けて、8章「主要呼出し先」の呼出し先記法・役割文言・非同期表記を統一 |
+| 3.3 | 2026/04/20 | システム分析チーム | 8章「主要呼出し先」に出現していた未記載の GapCamera.cs 内メソッドを 8-4 へ追加補完（dispGapResult / clearGapResult / initialGapCamera*ProcessSec） |
 
 ---
 
