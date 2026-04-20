@@ -1,4 +1,4 @@
-# UfCamera 詳細設計書
+﻿# UfCamera 詳細設計書
 
 | 項目 | 内容 |
 |------|------|
@@ -829,11 +829,21 @@ sequenceDiagram
     RES-->>UI: dispUfMeasResult
 ```
 
----
-
 ## 8. メソッド仕様
 
-### 8-1. UIイベント・位置合わせ系メソッド
+本章は、機能とモジュール境界が追いやすいように、以下の順で節を配置する。
+
+| 並び順 | 節 | 主担当モジュール | 主な責務 |
+|--------|----|------------------|----------|
+| 1 | 8-1 | MainWindow / UfCamera | UIイベント起点の制御処理 |
+| 2 | 8-2 | UfCamera | 計測・補正の業務処理 |
+| 3 | 8-3 | UfCamera / UnitInfo | 設定値の取得・設定・書込み |
+| 4 | 8-4 | UfCamera / MakeUFData / UfAdjustUnit | 補助計算と補正演算 |
+| 5 | 8-5 | UfCamera + 連携モジュール | 連携モジュール呼出し |
+| 6 | 8-6 | EstimateCameraPos 連携要素 | 姿勢推定連携メンバ定義 |
+| 7 | 8-7 | GapCamera 参照節 | 相互参照方針と追従ルール |
+
+### 8-1. UIイベント・制御メソッド
 
 #### 8-1-1. cmbxUfCamCamera_SelectionChanged
 
@@ -858,6 +868,27 @@ sequenceDiagram
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
 | ShowLensCdFiles | レンズCD一覧更新 | 同期 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `type == UfCamAdjustType.EachModule` | `AdjustUfCamEachModule` を呼び出す。 |
+| `type == UfCamAdjustType.Radiator` | `AdjustUfCamRadiator` を呼び出す。 |
+| `type == UfCamAdjustType.Cabi_9pt` | `AdjustUfCam9pt` を呼び出す。 |
+| 上記以外 | `AdjustUfCamCabinet` を呼び出す。 |
+| 方式別調整内 `ExtractFmt` | 各Cabinetループで必ず1回実行し、失敗時は `Failed in ExtractFmt.` 例外を送出して中断する。 |
+| 方式別調整内 `Fmt2XYZ*` | `ForCrosstalkCameraUF` 有効時は LEDモデルにより `Fmt2XYZ_Crosstalk` / `Fmt2XYZ` を分岐、無効時は `Fmt2XYZ` 固定。失敗時は `Failed in Fmt2XYZ.` 例外。 |
+| 方式別調整内 `ModifyXYZCam*` | `ufCamAdjAlgo == CommonColor` なら `ModifyXYZCam` 系、その他は `ModifyXYZCamCommonLed`。失敗時は `Failed in ModifyXYZCam.` 例外。 |
+| 方式別調整内 `Statistics*` | `ForCrosstalkCameraUF` 有効時は `Statistics_CameraUF`、無効時は `Statistics(-1, ...)`。失敗時は `Failed in Statistics.` 例外。 |
 
 例外時仕様
 
@@ -921,8 +952,17 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
+| actionButton | 接続開始時のUI状態遷移 | 同期 |
 | DisconnectCamera | 既存接続解除 | 同期 |
 | ConnectCamera | カメラ接続 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -988,6 +1028,14 @@ sequenceDiagram
 |----------|------|--------------|
 | DisconnectCamera | カメラ接続解除 | 同期 |
 | actionButton | UI状態遷移管理 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1058,9 +1106,22 @@ sequenceDiagram
 
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
+| actionButton / releaseButton | 開始・終了時のUI状態遷移 | 同期 |
 | CheckSelectedUnits | 対象Cabinetの妥当性検証 | 同期 |
+| CheckShootingDist | 撮影距離条件の妥当性確認 | 同期 |
 | MeasureUfAsync | U/F計測主処理 | 非同期（Task.Run） |
+| SetThroughMode / setUserSettingSetPos | 位置合わせ停止時の画質設定復帰 | 同期 |
+| DeleteUnwantedImagesMeas | 不要画像削除 | 同期 |
 | UfCamMeasLog.SaveToXmlFile | 計測結果XML保存 | 同期 |
+| ManageLogGen | 測定ログ世代管理 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1131,6 +1192,21 @@ sequenceDiagram
 | CheckObjectiveCabinet | 基準Cabinet妥当性検証 | 同期 |
 | AdjustUfCamAsync | U/F調整主処理 | 非同期（Task.Run） |
 | MeasureUfAsync | 調整後再計測 | 非同期（Task.Run） |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1205,6 +1281,14 @@ sequenceDiagram
 |----------|------|--------------|
 | showMessageWindow | 警告メッセージ表示 | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知 | 後処理 |
@@ -1254,6 +1338,33 @@ sequenceDiagram
 | 6 | Cabinet空間座標設定 | SetCabinetPos を実行する。 |
 | 7 | 表示切替/タイマ開始 | tcUfCamView=1 とし timerUfCam.Enabled=true を設定する。 |
 | 8 | OFF時処理 | ステータスを Done. に戻す。 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| playSound | 開始音再生 | 同期 |
+| CheckShootingDist | 距離条件妥当性確認 | 同期 |
+| CheckSelectedUnits | 対象Cabinetの矩形成立確認 | 同期 |
+| getUserSettingSetPos / setAdjustSettingSetPos | ユーザー設定退避と位置合わせ用設定適用 | 同期 |
+| outputIntSigChecker / AutoFocus | 内部信号出力とAF実行 | 同期 |
+| SetCamPosTarget / SetCabinetPos | 目標位置算出とCabinet空間座標設定 | 同期 |
+| timerUfCam.Enabled 設定 | 位置合わせタイマ開始 | 同期 |
 
 例外時仕様
 
@@ -1319,8 +1430,17 @@ sequenceDiagram
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
 | AdjustCameraPosUf | ライブ画像取得と位置合わせ評価 | 同期 |
-| setUserSetting | 退避設定の復元 | 同期 |
+| SetThroughMode | Through Mode解除 | 同期 |
+| setUserSettingSetPos | 位置合わせ用退避設定の復元 | 同期 |
 | stopIntSig | 内部信号停止 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1343,7 +1463,7 @@ sequenceDiagram
     UI->>POS: AdjustCameraPosUf
     alt 例外
         POS-->>UI: Exception
-        UI->>SET: ThroughMode解除/setUserSetting/stopIntSig
+        UI->>SET: ThroughMode解除/setUserSettingSetPos/stopIntSig
         UI->>UI: timer停止/トグルOFF
         UI->>MSG: CAS Error表示
     else 正常
@@ -1385,6 +1505,14 @@ sequenceDiagram
 | OpenFileDialog | 結果XMLパスの選択 | 同期 |
 | UfCamMeasLog.LoadFromXmlFile | 計測結果の読込 | 同期 |
 | dispUfMeasResult | 画面への再表示 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1454,6 +1582,14 @@ sequenceDiagram
 |----------|------|--------------|
 | cmbxGapCamLensCd | Gap側レンズ選択UI | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知 | 後処理 |
@@ -1480,7 +1616,7 @@ sequenceDiagram
     end
 ```
 
-### 8-2. U/F計測系メソッド
+### 8-2. 業務処理メソッド
 
 #### 8-2-1. MeasureUfAsync
 
@@ -1511,9 +1647,35 @@ sequenceDiagram
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
 | CheckOpenCvSharpDll | 解析環境確認 | 同期 |
+| outputIntSigChecker | パターン表示の事前初期化 | 同期 |
+| sendSdcpCommand | Cabinet電源投入と表示制御 | 同期 |
+| SetCamPosTarget | カメラ目標位置の再設定 | 同期 |
+| getUserSetting / setAdjustSetting | ユーザー設定退避と調整用設定適用 | 同期 |
 | AutoFocus | AF実行 | 同期 |
+| GetCameraPosUf / CheckCameraPos | 開始時カメラ位置取得と妥当性確認 | 同期 |
+| CalcTargetArea | 撮影エリア占有率算出 | 同期 |
+| SetCabinetPos / MoveCabinetPos | Cabinet空間座標設定とズレ反映 | 同期 |
+| CheckCpAngle | 調整点角度上限確認 | 同期 |
 | CaptureUfImages | 計測画像取得 | 同期 |
 | calcMeasAreaPv | 測定領域解析 | 同期 |
+| stopIntSig | 内部信号停止 | 同期 |
+| SetThroughMode / setUserSetting | 通常設定復帰 | 同期 |
+| dispUfMeasResult | 測定結果表示 | 同期 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -1568,6 +1730,29 @@ sequenceDiagram
 
 例外時仕様: 有効Blobが存在しない場合は 0 を返す。
 
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CvBlob[,]` 要素参照 | Blobの有効判定と境界値取得 | 同期 |
+| `Math.Min` / `Math.Max` | 外接矩形境界の更新 | 同期 |
+| 基本算術演算（減算・乗算） | 面積計算 `(maxX-minX)*(maxY-minY)` | 同期 |
+
 シーケンス図
 
 ```mermaid
@@ -1604,6 +1789,30 @@ sequenceDiagram
 | 4 | エラー送出 | 上限超過時は距離条件見直しを促す Exception を送出する。 |
 
 例外時仕様: PanLimit または TiltLimit 超過時に Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `List<UnitInfo>` 走査 | 対象Cabinet反復処理 | 同期 |
+| `CabinetPos` 参照 | 各Cabinetの Pan/Tilt 取得 | 同期 |
+| `Math.Abs` | 角度絶対値を算出し上限比較 | 同期 |
+| `Exception` 送出 | Pan/Tilt 上限超過時に異常通知 | 同期 |
 
 シーケンス図
 
@@ -1646,6 +1855,31 @@ sequenceDiagram
 | 4 | Flat画像取得 | CaptureMeasFlatImage を呼び出す。 |
 | 5 | 内部信号停止 | stopIntSig を実行する。 |
 
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CaptureImage` | Black/Mask 画像の撮影実行 | 同期 |
+| `OutputTargetArea` | Mask撮影用の対象エリア表示 | 同期 |
+| `CaptureModuleAreaImage` | Module画像群の取得 | 同期 |
+| `CaptureMeasFlatImage` | Flat画像群の取得 | 同期 |
+| `stopIntSig` | 内部信号停止 | 同期 |
+
 シーケンス図
 
 ```mermaid
@@ -1687,6 +1921,30 @@ sequenceDiagram
 | 2 | パターン出力 | outputIntSigHatch で対象Moduleを強調表示する。 |
 | 3 | 撮影 | CaptureImage で Module画像を保存する。 |
 
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `moduleCount` / ループ制御 | Module単位の反復処理 | 同期 |
+| `outputIntSigHatch` | 対象Module強調パターン出力 | 同期 |
+| `CaptureImage` | Module画像の撮影実行 | 同期 |
+| ファイル保存処理 | 撮影結果の永続化 | 同期 |
+
 シーケンス図
 
 ```mermaid
@@ -1721,10 +1979,10 @@ sequenceDiagram
 
 | 手順No. | 処理内容 | 詳細 |
 |---------|----------|------|
-| 1 | Flat表示準備 | outputIntSigFlat を呼び出し、Flat表示状態に遷移する。 |
+| 1 | Flat表示準備 | 各色ごとに outputIntSigFlat または OutputTargetArea を呼び出し、Flat表示状態に遷移する。 |
 | 2 | 撮影範囲決定 | targetOnly=true の場合は対象Cabinetのみ、それ以外は全Cabinetを対象にする。 |
-| 3 | Flat撮影 | 対象Cabinetごとに CaptureImage を実行し Flat画像を保存する。 |
-| 4 | 後処理 | stopIntSig を実行し内部信号を停止する。 |
+| 3 | Flat撮影 | Red、Green、Blue、White の順に CaptureImage を実行し Flat画像を保存する。 |
+| 4 | 色切替待機 | 各色撮影の間で Thread.Sleep により表示更新待ちを入れる。 |
 
 入力条件・前提条件
 
@@ -1734,6 +1992,23 @@ sequenceDiagram
 | 対象Cabinet | lstTgtCabi が空でないこと | 例外通知して中断 |
 
 例外時仕様: 撮影失敗時は Exception を送出し、呼出元で安全復帰する。
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `outputIntSigFlat` | 全Cabinet対象のFlat表示 | 同期 |
+| `OutputTargetArea` | `targetOnly=true` 時の対象Cabinet限定表示 | 同期 |
+| `CaptureImage` | Flat画像の撮影実行 | 同期 |
+| `Thread.Sleep` | 各色撮影間の待機 | 同期 |
 
 シーケンス図
 
@@ -1747,16 +2022,20 @@ sequenceDiagram
     participant FS as FileSystem
 
     CAP->>FLAT: CaptureMeasFlatImage(path, lstTgtCabi, targetOnly)
-    FLAT->>CTRL: outputIntSigFlat
-    loop 対象Cabinet
+    loop Red / Green / Blue / White
+        alt targetOnly=true
+            FLAT->>CTRL: OutputTargetArea
+        else targetOnly=false
+            FLAT->>CTRL: outputIntSigFlat
+        end
         FLAT->>CAM: CaptureImage(Flat)
         CAM->>FS: Flat画像保存
+        FLAT->>FLAT: Thread.Sleep
     end
-    FLAT->>CTRL: stopIntSig
     FLAT-->>CAP: 完了
 ```
 
-### 8-3. 位置・基準Cabinet算出系メソッド
+### 8-3. 設定・データ書込みメソッド
 
 #### 8-3-1. SetCabinetPos
 
@@ -1777,6 +2056,29 @@ sequenceDiagram
 | 3 | 有効Cabinet走査 | Blank除外後の有効領域サイズを actMaxX, actMaxY として算出する。 |
 | 4 | 原点Cabinet設定 | 左下原点から tempCabiPos 配列へ CabinetCoordinate を展開する。 |
 | 5 | 実座標反映 | allocInfo.lstUnits の CabinetPos へ変換結果を反映する。 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CalcRelativePosition` | 撮影条件から pan、tilt、x、y を算出 | 同期 |
+| `LoadWallFormFile` | Curve壁形状ファイルを読込む | 同期 |
+| `allocInfo.lstUnits` 更新 | CabinetPos へ変換結果を反映 | 同期 |
 
 例外時仕様
 
@@ -1826,6 +2128,29 @@ sequenceDiagram
 
 例外時仕様: 対象Cabinetが空の場合は Exception を送出する。
 
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `List<UnitInfo>` 走査 | 境界算出と最近傍Cabinet探索 | 同期 |
+| 中央座標計算 | X/Y中央位置を算出 | 同期 |
+| 最近傍比較処理 | 中央座標に最も近い Cabinet を選定 | 同期 |
+
 シーケンス図
 
 ```mermaid
@@ -1860,6 +2185,29 @@ sequenceDiagram
 | 2 | 識別子変換 | ControllerID、PortNo、UnitNo を整数化する。 |
 | 3 | Cabinet走査 | allocInfo.lstUnits を走査し一致Cabinetを検索する。 |
 | 4 | 結果格納 | 発見した Cabinet を lstObjCabi へ追加する。 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `string.Split` | `Cx-y-z` 文字列を要素分解 | 同期 |
+| 整数変換処理 | ControllerID、PortNo、UnitNo を数値化 | 同期 |
+| `allocInfo.lstUnits` 走査 | 一致Cabinetを検索 | 同期 |
 
 シーケンス図
 
@@ -1897,6 +2245,29 @@ sequenceDiagram
 | 4 | 結果統合 | 重複を排除し lstObjCabi へ格納する。 |
 
 例外時仕様: 基準Lineが1本も選択されていない場合は Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `ObjectiveLine` 状態参照 | Top/Bottom/Left/Right 指定状態を判定 | 同期 |
+| 端座標算出処理 | 指定辺の最小/最大 X,Y を算出 | 同期 |
+| `List<UnitInfo>` フィルタリング | 端座標に一致する Cabinet 群を抽出 | 同期 |
 
 シーケンス図
 
@@ -1939,6 +2310,29 @@ sequenceDiagram
 
 例外時仕様: 範囲外の基準Cabinetが含まれる場合は Exception を送出する。
 
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `lstObjCabi` 走査 | 基準Cabinet を順次展開 | 同期 |
+| `lstTgtUnit` 含有判定 | 調整対象範囲への所属を確認 | 同期 |
+| `Exception` 送出 | 範囲外Cabinet検出時の異常通知 | 同期 |
+
 シーケンス図
 
 ```mermaid
@@ -1960,7 +2354,159 @@ sequenceDiagram
     end
 ```
 
-### 8-4. U/F調整系メソッド
+#### 8-3-6. SetCamPosTarget
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `void SetCamPosTarget(ImageType_CamPos imageType = ImageType_CamPos.LiveView, bool log = false, List<UnitInfo> lstUnit = null, double zDistanceSpec = 0)` |
+| 概要 | 位置合わせ用の目標カメラ姿勢・有効撮像範囲・各種スペック値を算出し、後続の姿勢判定処理で参照する内部状態を更新する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | imageType | ImageType_CamPos | N | 目標算出時に使用する画像種別（既定: LiveView） |
+| 2 | log | bool | N | 実行ログ出力有無（既定: false） |
+| 3 | lstUnit | List<UnitInfo> | N | 目標算出対象のCabinet群（未指定時は内部保持値を使用） |
+| 4 | zDistanceSpec | double | N | Z距離判定用スペック値（既定: 0） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 対象範囲取得 | 位置合わせ対象Cabinet群から `startX/endX/startY/endY` を算出し、X/Y方向Cabinet数を確定する。 |
+| 2 | モデル別パラメータ設定 | LEDモデルに応じて Cabinet/Module寸法、カメラパラメータ、使用可能範囲（canUse領域）を設定する。 |
+| 3 | 空間座標計算 | `SetCabinetPos` を呼び出してCabinet座標系を更新し、対象Wallサイズとオフセットを算出する。 |
+| 4 | 高さ・距離条件反映 | ユーザー設定（壁高、カメラ高、撮影距離）と既定値から目標高さ条件を決定する。 |
+| 5 | 目標姿勢生成 | 3D→2D投影と画角判定により `tgtCamPos`、`tgtCamPos_canUse`、判定スペック値を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 位置合わせ対象Cabinet（`m_lstCamPosUnits`）が1件以上設定済みであること | 対象なし時は `tgtCamPos = null` で終了 |
+| モデル情報 | `allocInfo.LEDModel` がサポート対象モデルであること | 対象外モデルは処理を打ち切る |
+| UI設定値 | 撮影距離・壁高さ・カメラ高さの入力値が数値変換可能であること | 変換失敗時は例外で上位へ伝播 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `m_lstCamPosUnits.Count <= 0` | 目標姿勢を未設定として即時終了する。 |
+| LiveView/JPEG | センサ解像度（1024x680 / 3008x2000）を切替える。 |
+| カメラ位置既定/ユーザー指定 | 壁高・カメラ高の適用元を切替える。 |
+| LEDモデル種別 | P1.2/P1.5、4x2/4x3 構成の寸法定数を切替える。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `tbtnUfCamSetPos_Click` | 位置合わせ開始時の目標再算出 | 同期 |
+| `MeasureUfAsync` | 測定前の目標再算出 | 同期 |
+| `AdjustUfCamAsync` | 調整前の目標再算出 | 同期 |
+| `SetCabinetPos` | Cabinet空間座標系の再計算 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 撮影距離/高さの数値変換失敗 | 下位例外 | 呼出元へ送出 | 位置合わせ開始を中断 |
+| サポート外LEDモデル | モデル判定 | 例外なしで処理打切り | 目標更新なし |
+| 対象Cabinet未設定 | 件数判定 | 例外なし | `tgtCamPos` を null 設定 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as SetPos/Measure/Adjust
+    participant POS as SetCamPosTarget
+    participant GEO as SetCabinetPos
+
+    CALLER->>POS: SetCamPosTarget(...)
+    POS->>POS: 対象範囲・モデル別パラメータ決定
+    POS->>GEO: SetCabinetPos(m_lstCamPosUnits, 0)
+    POS->>POS: 壁条件/距離条件から目標姿勢生成
+    POS-->>CALLER: tgtCamPos / 判定スペック更新
+```
+
+#### 8-3-7. searchUnit
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private UnitInfo searchUnit(List<UnitInfo> lstTgtUnit, int x, int y)` |
+| 概要 | 対象Cabinet一覧から、指定座標（X,Y）に一致するUnitInfoを検索して返す。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnit | List<UnitInfo> | Y | 検索対象Cabinet一覧 |
+| 2 | x | int | Y | 検索対象X座標（1基数） |
+| 3 | y | int | Y | 検索対象Y座標（1基数） |
+
+返り値: UnitInfo（未検出時は null）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期化 | 戻り値用の `tgtUnit` を null で初期化する。 |
+| 2 | 線形検索 | `lstTgtUnit` を先頭から走査し、`unit.X == x && unit.Y == y` を満たす要素を探索する。 |
+| 3 | 結果確定 | 一致要素を検出した時点で `tgtUnit` に格納し、ループを終了する。 |
+| 4 | 返却 | 一致要素があればその UnitInfo、なければ null を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | `lstTgtUnit` が null でないこと | null時は下位例外の可能性 |
+| 入力値 | `x`,`y` が対象座標系（1基数）に整合すること | 未検出（null返却） |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 一致要素あり | 一致した最初の要素を返す（早期終了）。 |
+| 一致要素なし | null を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `SetCamPosTarget` 内の目標算出処理 | 目標Cabinet探索 | 同期 |
+| `GetTiltAngle` | 指定Cabinet中心のTilt角取得前のCabinet解決 | 同期 |
+| U/F補正点関連処理 | 座標→Cabinet解決 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| `lstTgtUnit` が null | 下位例外 | 呼出元へ送出 | 当該処理中断 |
+| 座標不一致 | 一致要素なし判定 | 例外なし（null返却） | 呼出元でnull評価 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant S as searchUnit
+    participant L as lstTgtUnit
+
+    CALLER->>S: searchUnit(lstTgtUnit, x, y)
+    loop 各Unit
+        S->>L: X/Y一致判定
+        alt 一致
+            S-->>CALLER: UnitInfo
+        end
+    end
+    S-->>CALLER: null（一致なし）
+```
+
+### 8-4. 補助計算・補正演算メソッド
 
 #### 8-4-1. AdjustUfCamAsync
 
@@ -1990,8 +2536,36 @@ sequenceDiagram
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
 | CheckOpenCvSharpDll | 環境確認 | 同期 |
+| outputIntSigChecker | パターン表示の事前初期化 | 同期 |
+| sendSdcpCommand | Cabinet電源投入と表示制御 | 同期 |
+| SetCamPosTarget | カメラ目標位置の再設定 | 同期 |
+| getUserSetting / setAdjustSetting | ユーザー設定退避と調整用設定適用 | 同期 |
+| AutoFocus | AF実行 | 同期 |
+| GetCameraPosUf / CheckCameraPos | 開始・終了カメラ位置取得と妥当性確認 | 同期 |
+| CalcTargetArea | 撮影エリア占有率算出 | 同期 |
+| SetCabinetPos / MoveCabinetPos | Cabinet空間座標設定とズレ反映 | 同期 |
+| CheckCpAngle | 調整点角度上限確認 | 同期 |
 | AdjustUfCamCabinet/9pt/Radiator/EachModule | 方式別調整 | 同期 |
 | writeAdjustedData | 調整済みデータ反映 | 同期 |
+| stopIntSig | 内部信号停止 | 同期 |
+| SetThroughMode / setUserSetting | 通常設定復帰 | 同期 |
+| DeleteUnwantedImagesAdj | 不要画像削除 | 同期 |
+| outputFlatPattern | White画像表示 | 同期 |
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 シーケンス図
 
@@ -2033,11 +2607,40 @@ sequenceDiagram
 | 1 | 補正点抽出 | GetCpCabinet で Cabinet単位の補正点を抽出する。 |
 | 2 | Flat画像反映 | GetFlatImages で補正点へ測定平均値を格納する。 |
 | 3 | データ存在確認 | checkDataFile で hc.bin の存在を確認する。 |
-| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ、CalcReferenceValue、ModifyXYZCam、Statistics を順次実行する。 |
+| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ系、CalcReferenceValue、ModifyXYZCam系、Statistics系を順次実行する。 |
 | 5 | 調整ファイル生成 | OverWritePixelData で adjusted hc.bin を生成し MoveFile に登録する。 |
 | 6 | 基準点保存 | RefPoint.xml を保存する。 |
 
 例外時仕様: target cabinet area 未選択、hc.bin 不在、MakeUFData の各工程失敗時は Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ExtractFmt` | Cabinetごとに必ず実行。失敗時は `Failed in ExtractFmt.` 例外で中断。 |
+| `Fmt2XYZ*`（`ForCrosstalkCameraUF` 有効） | `m_lstCrosstalkInfo` から対象Cabinet（ControllerID/X/Y一致）を検索し、LEDモデルが `ZRD_BH12D/BH15D/CH12D/CH15D` 系（S3含む）なら `Fmt2XYZ_Crosstalk(...)`、それ以外は `Fmt2XYZ(...)`。 |
+| `Fmt2XYZ`（`ForCrosstalkCameraUF` 無効） | 常に `Fmt2XYZ(...)` を実行する。 |
+| `ModifyXYZCam*` | `ufCamAdjAlgo == CommonColor` の場合、LEDモデルが上記対象なら `ModifyXYZCam(..., true)`、対象外なら `ModifyXYZCam(..., false)`（`ForCrosstalkCameraUF` 無効時は3引数版）。それ以外は `ModifyXYZCamCommonLed(...)`。 |
+| `Statistics*` | `ForCrosstalkCameraUF` 有効時は `Statistics_CameraUF(unitCpInfo.Unit, ...)`、無効時は `Statistics(-1, ...)`。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GetCpCabinet` | Cabinet単位の補正点を抽出 | 同期 |
+| `GetFlatImages` | Flat画像から補正点測定値を取得 | 同期 |
+| `checkDataFile` | `hc.bin` 存在確認 | 同期 |
+| `ExtractFmt` / `Fmt2XYZ` / `Fmt2XYZ_Crosstalk` | 補正元FMTデータ展開とXYZ変換（クロストーク分岐含む） | 同期 |
+| `CalcReferenceValue` / `ModifyXYZCam` / `ModifyXYZCamCommonLed` / `Statistics` / `Statistics_CameraUF` | 基準値算出、補正反映、統計算出（条件分岐含む） | 同期 |
+| `OverWritePixelData` | adjusted `hc.bin` を生成 | 同期 |
 
 シーケンス図
 
@@ -2078,7 +2681,7 @@ sequenceDiagram
 | 1 | 補正点抽出 | GetCp9pt で9点基準の補正点を抽出する。 |
 | 2 | Flat画像反映 | GetFlatImages で補正点へ測定値を反映する。 |
 | 3 | データ確認 | checkDataFile で hc.bin の存在を確認する。 |
-| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ、ModifyXYZCam(Cabi_9pt)、Statistics を実行する。 |
+| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ系、ModifyXYZCam系(Cabi_9pt)、Statistics系を実行する。 |
 | 5 | ファイル生成 | OverWritePixelData で adjusted hc.bin を生成し lstMoveFile に登録する。 |
 | 6 | 基準点保存 | RefPoint.xml を保存する。 |
 
@@ -2091,6 +2694,34 @@ sequenceDiagram
 | Progress更新 | dispatcher.Invoke で残り時間を再計算する |
 
 例外時仕様: 9点抽出失敗、hc.bin 不在、MakeUFData 失敗時は Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ExtractFmt` | Cabinetごとに必ず実行。失敗時は `Failed in ExtractFmt.` 例外で中断。 |
+| `Fmt2XYZ*` | `ForCrosstalkCameraUF` 有効時は LEDモデル条件で `Fmt2XYZ_Crosstalk` / `Fmt2XYZ` を分岐、無効時は `Fmt2XYZ` 固定。 |
+| `ModifyXYZCam*` | `ufCamAdjAlgo == CommonColor` の場合は `ModifyXYZCam(UfCamAdjustType.Cabi_9pt, ..., useCrosstalk)` 系、それ以外は `ModifyXYZCamCommonLed(UfCamAdjustType.Cabi_9pt, ...)`。 |
+| `Statistics*` | `ForCrosstalkCameraUF` 有効時は `Statistics_CameraUF`、無効時は `Statistics(-1, ...)`。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GetCp9pt` | 9点基準の補正点を抽出 | 同期 |
+| `GetFlatImages` | Flat画像から補正点測定値を取得 | 同期 |
+| `checkDataFile` | `hc.bin` 存在確認 | 同期 |
+| `ExtractFmt` / `Fmt2XYZ` / `Fmt2XYZ_Crosstalk` | 補正元FMTデータ展開とXYZ変換（クロストーク分岐含む） | 同期 |
+| `ModifyXYZCam` / `ModifyXYZCamCommonLed` / `Statistics` / `Statistics_CameraUF` | 9点補正反映と統計算出（条件分岐含む） | 同期 |
+| `OverWritePixelData` / `dispatcher.Invoke` | adjusted `hc.bin` 生成と進捗更新 | 同期 |
 
 シーケンス図
 
@@ -2129,7 +2760,7 @@ sequenceDiagram
 | 1 | 補正点抽出 | GetCpRadiator でRadiator基準の補正点を抽出する。 |
 | 2 | Flat画像反映 | GetFlatImages で補正点へ測定値を反映する。 |
 | 3 | データ確認 | checkDataFile で hc.bin の存在を確認する。 |
-| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ、ModifyXYZCam(Radiator)、Statistics を実行する。 |
+| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ系、ModifyXYZCam系(Radiator)、Statistics系を実行する。 |
 | 5 | ファイル生成 | OverWritePixelData で adjusted hc.bin を生成し lstMoveFile に登録する。 |
 | 6 | 基準点保存 | RefPoint.xml を保存する。 |
 
@@ -2142,6 +2773,34 @@ sequenceDiagram
 | 対象粒度 | Cabinet単位で Radiator基準の補正を行う |
 
 例外時仕様: Radiator抽出失敗、hc.bin 不在、MakeUFData 失敗時は Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ExtractFmt` | Cabinetごとに必ず実行。失敗時は `Failed in ExtractFmt.` 例外で中断。 |
+| `Fmt2XYZ*` | `ForCrosstalkCameraUF` 有効時は LEDモデル条件で `Fmt2XYZ_Crosstalk` / `Fmt2XYZ` を分岐、無効時は `Fmt2XYZ` 固定。 |
+| `ModifyXYZCam*` | `ufCamAdjAlgo == CommonColor` の場合は `ModifyXYZCam(UfCamAdjustType.Radiator, ..., useCrosstalk)` 系、それ以外は `ModifyXYZCamCommonLed(UfCamAdjustType.Radiator, ...)`。 |
+| `Statistics*` | `ForCrosstalkCameraUF` 有効時は `Statistics_CameraUF`、無効時は `Statistics(-1, ...)`。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GetCpRadiator` | Radiator基準の補正点を抽出 | 同期 |
+| `GetFlatImages` | Flat画像から補正点測定値を取得 | 同期 |
+| `checkDataFile` | `hc.bin` 存在確認 | 同期 |
+| `ExtractFmt` / `Fmt2XYZ` / `Fmt2XYZ_Crosstalk` | 補正元FMTデータ展開とXYZ変換（クロストーク分岐含む） | 同期 |
+| `ModifyXYZCam` / `ModifyXYZCamCommonLed` / `Statistics` / `Statistics_CameraUF` | Radiator補正反映と統計算出（条件分岐含む） | 同期 |
+| `OverWritePixelData` | adjusted `hc.bin` を生成 | 同期 |
 
 シーケンス図
 
@@ -2180,7 +2839,7 @@ sequenceDiagram
 | 1 | 補正点抽出 | GetCpEachModule でModule単位の補正点を抽出する。 |
 | 2 | Flat画像反映 | GetFlatImages で補正点へ測定値を反映する。 |
 | 3 | データ確認 | checkDataFile で hc.bin の存在を確認する。 |
-| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ、ModifyXYZCam(EachModule)、Statistics を実行する。 |
+| 4 | Cabinetループ | ExtractFmt、Fmt2XYZ系、ModifyXYZCam系(EachModule)、Statistics系を実行する。 |
 | 5 | ファイル生成 | OverWritePixelData で adjusted hc.bin を生成し lstMoveFile に登録する。 |
 | 6 | 基準点保存 | RefPoint.xml を保存する。 |
 
@@ -2193,6 +2852,34 @@ sequenceDiagram
 | 取得ステップ | Module数に比例して補正点抽出ステップが増加する |
 
 例外時仕様: Module抽出失敗、hc.bin 不在、MakeUFData 失敗時は Exception を送出する。
+
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 本節の処理概要に記載した前段処理が完了していること | 例外通知して処理中断 |
+| 入力値 | 引数/内部状態が有効範囲であること | 例外通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ExtractFmt` | Cabinetごとに必ず実行。失敗時は `Failed in ExtractFmt.` 例外で中断。 |
+| `Fmt2XYZ*` | `ForCrosstalkCameraUF` 有効時は LEDモデル条件で `Fmt2XYZ_Crosstalk` / `Fmt2XYZ` を分岐、無効時は `Fmt2XYZ` 固定。 |
+| `ModifyXYZCam*` | `ufCamAdjAlgo == CommonColor` の場合は `ModifyXYZCam(UfCamAdjustType.EachModule, ..., useCrosstalk)` 系、それ以外は `ModifyXYZCamCommonLed(UfCamAdjustType.EachModule, ...)`。 |
+| `Statistics*` | `ForCrosstalkCameraUF` 有効時は `Statistics_CameraUF`、無効時は `Statistics(-1, ...)`。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GetCpEachModule` | Module単位の補正点を抽出 | 同期 |
+| `GetFlatImages` | Flat画像から補正点測定値を取得 | 同期 |
+| `checkDataFile` | `hc.bin` 存在確認 | 同期 |
+| `ExtractFmt` / `Fmt2XYZ` / `Fmt2XYZ_Crosstalk` | 補正元FMTデータ展開とXYZ変換（クロストーク分岐含む） | 同期 |
+| `ModifyXYZCam` / `ModifyXYZCamCommonLed` / `Statistics` / `Statistics_CameraUF` | Module単位補正反映と統計算出（条件分岐含む） | 同期 |
+| `OverWritePixelData` | adjusted `hc.bin` を生成 | 同期 |
 
 シーケンス図
 
@@ -2246,6 +2933,14 @@ sequenceDiagram
 |----------|------|--------------|
 | File I/O | hc.bin 読込 | 同期 |
 | MakeUFData内部デコーダ | FMTデータ解析 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -2305,6 +3000,14 @@ sequenceDiagram
 |----------|------|--------------|
 | MakeUFData色変換エンジン | FMT→XYZ 変換 | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知/伝播 | 後処理 |
@@ -2359,6 +3062,14 @@ sequenceDiagram
 | 呼出し先 | 役割 | 同期/非同期 |
 |----------|------|--------------|
 | MakeUFData内部補正ロジック | XYZ差分反映 | 同期 |
+
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
 
 例外時仕様
 
@@ -2416,6 +3127,14 @@ sequenceDiagram
 |----------|------|--------------|
 | MakeUFData統計ロジック | RGBW統計算出 | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知/伝播 | 後処理 |
@@ -2472,6 +3191,14 @@ sequenceDiagram
 |----------|------|--------------|
 | MakeUFDataクロストーク演算 | Crosstalk反映付き色変換 | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知/伝播 | 後処理 |
@@ -2526,6 +3253,14 @@ sequenceDiagram
 |----------|------|--------------|
 | MakeUFData CameraUF統計ロジック | Cabinet単位RGBW統計 | 同期 |
 
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 処理概要（詳細）の手順に従って処理を継続する。 |
+| 異常系 | 例外時仕様に従って通知または中断する。 |
+
 例外時仕様
 
 | ケース | 捕捉方法 | 通知/伝播 | 後処理 |
@@ -2545,6 +3280,3172 @@ sequenceDiagram
     MK-->>ADJ: true/false + out targetY*
 ```
 
+#### 8-4-12. CalcReferenceValue
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CalcReferenceValue(UfCamCabinetCpInfo unitCpInfo, List<UfCamCorrectionPoint> lstRefPoints, ObjectiveLine objEdge, out UfCamCorrectionPoint refPt)` |
+| 概要 | 調整対象Cabinetに対する基準画素値（R/G/B）を、基準Cabinet情報から算出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | unitCpInfo | UfCamCabinetCpInfo | Y | 調整対象Cabinetの補正点情報 |
+| 2 | lstRefPoints | List<UfCamCorrectionPoint> | Y | 基準点群 |
+| 3 | objEdge | ObjectiveLine | N | 基準ライン指定（null は Default/Cabinet 基準） |
+| 4 | refPt(out) | UfCamCorrectionPoint | Y | 算出した基準目標値 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 基準モード判定 | `objEdge == null` の場合は `lstRefPoints[0]` をそのまま基準値として採用する。 |
+| 2 | ライン本数計数 | Top/Bottom/Left/Right の指定数をカウントし、1辺か2辺かを判定する。 |
+| 3 | 1辺基準算出 | Top/Bottom 指定時は同一 `X`、Left/Right 指定時は同一 `Y` の基準点平均値を算出する。 |
+| 4 | 2辺基準算出 | 水平側平均 `refPtH` と垂直側平均 `refPtV` を求め、Cabinet距離で重み付け平均する。 |
+| 5 | 出力反映 | 算出した R/G/B と基準Unit情報を `refPt` に設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | `unitCpInfo`、`lstRefPoints` が有効で、基準点が最低1件存在すること | 例外送出または不正値 |
+| ライン指定 | `objEdge` の指定本数が 0/1/2 の想定内であること | 想定外本数は例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `objEdge == null` | Default/Cabinet 基準として `lstRefPoints[0]` を採用する。 |
+| `lineCount == 1` | 同一行または同一列の基準点平均を `refPt` に設定する。 |
+| `lineCount == 2` | H/V 2系統平均を距離重み付きで合成して `refPt` に設定する。 |
+| その他 | `Incorrect number of lines selected.` 例外を送出する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `AdjustUfCamCabinet` / `AdjustUfCam9pt` / `AdjustUfCamRadiator` / `AdjustUfCamEachModule` | 補正ループ内で基準値算出に利用 | 同期 |
+| `Math.Abs` | 距離重み付け計算（`distH`/`distV`） | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ライン指定本数不正 | `lineCount` 判定 | 例外を上位へ送出 | 当該Cabinet処理中断 |
+| 基準点不足 | 平均算出時（count==0） | 0除算回避で `count=1` として継続 | 平均値は安全側で算出 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as AdjustUfCam*
+    participant REF as CalcReferenceValue
+    participant PTS as lstRefPoints
+
+    ADJ->>REF: CalcReferenceValue(unitCpInfo, lstRefPoints, objEdge, out refPt)
+    REF->>REF: objEdge / lineCount 判定
+    alt lineCount == 1
+        REF->>PTS: 同一行/列の平均値算出
+    else lineCount == 2
+        REF->>PTS: H側平均(refPtH), V側平均(refPtV)算出
+        REF->>REF: 距離重み付き平均で合成
+    else objEdge == null
+        REF->>PTS: 先頭基準値を採用
+    end
+    REF-->>ADJ: refPt
+```
+
+#### 8-4-13. OverWritePixelData（MakeUFData）
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public bool m_MakeUFData.OverWritePixelData(string fileName, string ledModel, bool allowCvLimit = false)` |
+| 概要 | 補正済み画素データ（m_pFmtCreated）を元 hc.bin へ上書きし、Module単位CRCと全体CRCを再計算して adjusted hc.bin を生成する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | fileName | string | Y | 出力先 adjusted hc.bin パス |
+| 2 | ledModel | string | Y | LEDモデル名（データ長/Module構成判定に使用） |
+| 3 | allowCvLimit | bool | N | 補正値パック時の制限許可フラグ（既定 false） |
+
+返り値: bool（成功=true）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 元データ読込 | `m_SourceCellDataFileName` の hc.bin を読込み、出力バッファへ複製する。 |
+| 2 | モデル別長さ決定 | `ledModel` に応じて `hcDataLength`、`hcModuleDataLength`、`hcCcDataLength` を選択する。 |
+| 3 | Moduleループ処理 | Moduleごとに画素補正領域を取り出し、`m_pFmtCreated` から 9要素を読んで `PackCcDataPat3(..., allowCvLimit)` で8byteへパックして上書きする。 |
+| 4 | Module CRC更新 | Module内のCCデータCRCとHeader CRCを再計算して更新する。 |
+| 5 | 全体CRC更新・書出し | 全体データCRCと先頭Header CRCを再計算し、`fileName` に書き出して true を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 前段処理 | `ExtractFmt` / `Fmt2XYZ` / `ModifyXYZCam` / `Statistics*` が成功し、`m_pFmtCreated` が更新済みであること | 不正データ書込みまたは失敗 |
+| 入力ファイル | `m_SourceCellDataFileName` が存在し読込み可能であること | 例外送出 |
+| 出力先 | `fileName` の親ディレクトリへ書込み可能であること | 例外送出 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| LEDモデル種別 | P1.2/P1.5、4x2/4x3 構成に応じてデータ長を切替える。 |
+| `allowCvLimit` | `PackCcDataPat3` 内の補正値制限可否を切替える。 |
+| 例外発生 | 呼出元（AdjustUfCam*）側で捕捉し、`Failed in OverWritePixelData.` として処理を中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `AdjustUfCamCabinet` / `AdjustUfCam9pt` / `AdjustUfCamRadiator` / `AdjustUfCamEachModule` | 調整ファイル生成で呼出し | 同期 |
+| `CMakeUFData.PackCcDataPat3` | 画素補正値を8byte形式へパック | 同期 |
+| `MainWindow.CalcCrc` | Module/全体CRC再計算 | 同期 |
+| `File.ReadAllBytes` / `File.WriteAllBytes` | 元データ読込とadjustedファイル出力 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 元データ読込失敗 | 下位例外 | 上位へ送出 | 当該Cabinet処理中断 |
+| CRC更新・書出し失敗 | 下位例外 | 上位へ送出 | `lstMoveFile` へ未登録 |
+| 戻り値 false | 呼出元判定 | `Failed in OverWritePixelData.` | 当該Cabinet処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as AdjustUfCam*
+    participant MK as MakeUFData
+    participant FS as FileSystem
+
+    ADJ->>MK: OverWritePixelData(adjustedFile, ledModel, allowCvLimit)
+    MK->>FS: source hc.bin 読込
+    MK->>MK: Module単位で画素補正値上書き
+    MK->>MK: Module CRC / Header CRC 更新
+    MK->>MK: 全体CRC更新
+    MK->>FS: adjusted hc.bin 書出し
+    MK-->>ADJ: true/false
+```
+
+#### 8-4-14. OverWritePixelDataWithCrosstalk（MakeUFData）
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public bool m_MakeUFData.OverWritePixelDataWithCrosstalk(string fileName, string ledModel, bool allowCvLimit = false)` |
+| 概要 | クロストーク補正値をModuleヘッダへ反映しつつ、対象Moduleの画素補正値を上書きしてCRCを再計算し、adjusted hc.bin を生成する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | fileName | string | Y | 出力先 adjusted hc.bin パス |
+| 2 | ledModel | string | Y | LEDモデル名（データ長/Module構成判定に使用） |
+| 3 | allowCvLimit | bool | N | 補正値パック時の制限許可フラグ（既定 false） |
+
+返り値: bool（成功=true）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 元データ読込 | `m_SourceCellDataFileName` を読込み、出力バッファへ複製する。 |
+| 2 | モデル別長さ決定 | `ledModel` に応じて `hcDataLength`、`hcModuleDataLength`、`hcCcDataLength` を選択する。 |
+| 3 | クロストーク情報反映 | `m_IsCtcOverwrite` かつ `m_CorUncCrosstalk` に対象Moduleが存在する場合、VDIを1へ更新し、R/G/Bクロストーク高色補正値を書き込む。 |
+| 4 | 画素補正値上書き | `m_CorUncCrosstalk` に対象Moduleが存在する場合のみ、`m_pFmtCreated` を `PackCcDataPat3(..., allowCvLimit)` で8byte化して画素領域へ反映する。 |
+| 5 | CRC再計算・書出し | Module単位CRC、全体CRC、Header CRCを再計算し、`fileName` へ書き出して true を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 前段処理 | `m_pFmtCreated` と `m_CorUncCrosstalk` が対象Moduleに対して準備済みであること | 対象Module反映漏れまたは失敗 |
+| 入力ファイル | `m_SourceCellDataFileName` が存在し読込み可能であること | 例外送出 |
+| クロストーク値 | `m_CorUncCrosstalk` の R/G/B 値が `float` 範囲内であること | false を返却 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| LEDモデル種別 | P1.2/P1.5、4x2/4x3 構成に応じてデータ長を切替える。 |
+| `m_IsCtcOverwrite` かつ対象Module存在 | VDIを有効化し、クロストーク高色補正値を書き込む。 |
+| 対象Module非該当 | 画素補正値上書きを行わず、既存値を維持してCRC更新のみ行う。 |
+| クロストーク値範囲外 | false を返して中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CMakeUFData.PackCcDataPat3` | 画素補正値を8byte形式へパック | 同期 |
+| `MainWindow.CalcCrc` | Module/全体CRC再計算 | 同期 |
+| `File.ReadAllBytes` / `File.WriteAllBytes` | 元データ読込とadjustedファイル出力 | 同期 |
+| `BitConverter.GetBytes` | クロストーク補正値のbyte列化 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 元データ読込/書出し失敗 | 下位例外 | 上位へ送出 | 当該処理中断 |
+| クロストーク値範囲外 | 範囲判定（float変換前） | false を返却 | 当該Module以降処理中断 |
+| 呼出元判定で失敗 | 戻り値 false | 呼出元で失敗通知 | 当該Cabinet処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Adjust* / UfAdjust*
+    participant MK as MakeUFData
+    participant FS as FileSystem
+
+    CALLER->>MK: OverWritePixelDataWithCrosstalk(file, ledModel, allowCvLimit)
+    MK->>FS: source hc.bin 読込
+    MK->>MK: Moduleループ
+    alt CTC上書き対象
+        MK->>MK: VDI更新 + CTC(R/G/B)書込み
+        MK->>MK: 画素補正値上書き
+    end
+    MK->>MK: Module CRC / 全体CRC / Header CRC 更新
+    MK->>FS: adjusted hc.bin 書出し
+    MK-->>CALLER: true/false
+```
+
+#### 8-4-15. OverWritePixelData系メソッド差分比較
+
+| 比較観点 | OverWritePixelData | OverWritePixelDataWithCrosstalk |
+|----------|--------------------|----------------------------------|
+| 主目的 | 補正画素値の上書きとCRC更新 | 補正画素値上書き + クロストーク情報（VDI/高色補正値）反映 |
+| シグネチャ | `OverWritePixelData(fileName, ledModel, allowCvLimit=false)` | `OverWritePixelDataWithCrosstalk(fileName, ledModel, allowCvLimit=false)` |
+| 画素上書き対象 | 全Module（ループ全域） | `m_CorUncCrosstalk` に存在するModuleのみ |
+| CTCデータ書込み | なし | `m_IsCtcOverwrite` かつ対象Module存在時に実施 |
+| VDI更新 | なし | CTC Data Valid Indicator を有効化 |
+| 追加変換処理 | なし | `BitConverter.GetBytes` で CTC(R/G/B) をbyte列化 |
+| 共通処理 | LEDモデル別データ長切替、`PackCcDataPat3`、Module/全体CRC再計算、`File.WriteAllBytes` | 同左 |
+| 失敗戻り | 例外中心（呼出元捕捉） | 例外に加えてCTC値範囲外で `false` を返却 |
+
+使い分け指針
+
+| 条件 | 選択すべきメソッド |
+|------|---------------------|
+| クロストーク補正を反映しない通常調整 | `OverWritePixelData` |
+| クロストーク補正値（VDI/高色補正値）をhc.binへ反映する調整 | `OverWritePixelDataWithCrosstalk` |
+
+呼出し元一覧
+
+| 呼出し元 | OverWritePixelData | OverWritePixelDataWithCrosstalk | 備考 |
+|----------|--------------------|----------------------------------|------|
+| `AdjustUfCamCabinet`（UfCamera） | ○ | - | `m_MakeUFData.OverWritePixelData(..., true)` を使用 |
+| `AdjustUfCam9pt`（UfCamera） | ○ | - | `m_MakeUFData.OverWritePixelData(..., true)` を使用 |
+| `AdjustUfCamRadiator`（UfCamera） | ○ | - | `m_MakeUFData.OverWritePixelData(..., true)` を使用 |
+| `AdjustUfCamEachModule`（UfCamera） | ○ | - | `m_MakeUFData.OverWritePixelData(..., true)` を使用 |
+| `UfAdjustCell` | ○ | ○ | 通常経路/クロストーク経路でメソッドを切替 |
+| `UfAdjustUnit` | ○ | ○ | 通常経路/クロストーク経路でメソッドを切替 |
+| `UfManual` | ○ | - | 手動補正フローで通常版を使用 |
+
+#### 8-4-16. checkDataFile（UfAdjustUnit依存）
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool checkDataFile(List<UnitInfo> lstUnit, out FileDirectory targetDir, DataType dataType = DataType.HcData)` |
+| 概要 | 指定Cabinet群について、バックアップディレクトリ階層（Latest/Previous/Initial）を順に探索し、対象データの存在可否と使用ディレクトリを返す。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstUnit | List<UnitInfo> | Y | 存在確認対象Cabinet一覧 |
+| 2 | targetDir(out) | FileDirectory | Y | 発見したデータ格納ディレクトリ |
+| 3 | dataType | DataType | N | 確認対象データ種別（既定: HcData） |
+
+返り値: bool（全Cabinet分が存在するディレクトリを発見した場合 true）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | ログ開始 | `Settings.Ins.ExecLog` が有効なら開始ログを出力する。 |
+| 2 | Latest確認 | `Backup_Latest` 配下で全Cabinetのファイル存在を確認する。全件存在時は `targetDir=Backup_Latest` で true を返す。 |
+| 3 | Previous確認 | Latest不成立時、`Backup_Previous` を同様に確認する。全件存在時は `targetDir=Backup_Previous` で true を返す。 |
+| 4 | Initial確認 | Previous不成立時、`Backup_Initial` を同様に確認する。全件存在時は `targetDir=Backup_Initial` で true を返す。 |
+| 5 | 失敗返却 | いずれも不成立の場合 `targetDir=Backup_Initial` を設定し false を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | `lstUnit` が空でなく、対象Cabinet情報が有効であること | 全件確認不能で false の可能性 |
+| ファイル体系 | バックアップフォルダ構成と `makeFilePath` 規約が整合していること | 既存データがあっても未検出となる可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| Latest 全件存在 | `targetDir=Backup_Latest`、true 返却 |
+| Latest不成立かつ Previous 全件存在 | `targetDir=Backup_Previous`、true 返却 |
+| 上記不成立かつ Initial 全件存在 | `targetDir=Backup_Initial`、true 返却 |
+| 全フォルダ不成立 | `targetDir=Backup_Initial`、false 返却 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `AdjustUfCamCabinet` / `AdjustUfCam9pt` / `AdjustUfCamRadiator` / `AdjustUfCamEachModule` | 補正元 `hc.bin` 存在確認 | 同期 |
+| `makeFilePath` | Cabinet別データファイルパス生成 | 同期 |
+| `File.Exists` | 実ファイル存在判定 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ファイル未検出 | 戻り値 false | 呼出元で `The UF data file(hc.bin) was not found.` 例外化 | 当該調整処理中断 |
+| ログ出力失敗 | 下位例外（内部で吸収） | 伝播なし | 存在確認処理は継続 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ADJ as AdjustUfCam*
+    participant CHK as checkDataFile
+    participant FS as FileSystem
+
+    ADJ->>CHK: checkDataFile(lstUnit, out targetDir)
+    CHK->>FS: Backup_Latest 全件確認
+    alt Latest成立
+        CHK-->>ADJ: true, Backup_Latest
+    else Latest不成立
+        CHK->>FS: Backup_Previous 全件確認
+        alt Previous成立
+            CHK-->>ADJ: true, Backup_Previous
+        else Previous不成立
+            CHK->>FS: Backup_Initial 全件確認
+            CHK-->>ADJ: true/false, Backup_Initial
+        end
+    end
+```
+
+### 8-5. 連携モジュールメソッド
+
+本節は、8-1〜8-4 の主要呼出し先に登場する補助メソッドを、機能・モジュール順でメソッド単位（8-5-x-x）に整理して記載する。
+
+並び規則（8-5内）
+
+| ブロック | 対象 | 収録範囲 |
+|----------|------|----------|
+| 8-5-1 | 接続・状態管理補助（UfCamera内部） | ShowLensCdFiles〜Wait4Capturing |
+| 8-5-2 | 位置・姿勢計算補助（UfCamera内部） | getUserSettingSetPos〜MoveCabinetPos |
+| 8-5-3 | 計測/表示/入出力連携（UfCamera + CameraDataClass + MainWindow + GapCamera） | CheckOpenCvSharpDll〜outputIntSigWindowByController |
+| 8-5-4 | 補正点抽出・結果出力補助（UfCamera内部） | GetCpCabinet〜outputFlatPattern |
+
+#### 8-5-1-1. ShowLensCdFiles
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void ShowLensCdFiles(int CameraSelection)` |
+| 概要 | 選択カメラに応じてレンズCD候補をUIへ反映する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | CameraSelection | int | Y | カメラ選択インデックス |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 選択カメラに応じてレンズCD候補をUIへ反映する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| cmbxUfCamCamera_SelectionChanged | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as ShowLensCdFiles
+
+    CALLER->>M: ShowLensCdFiles(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-2. ConnectCamera
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void ConnectCamera()` |
+| 概要 | U/Fカメラ接続と関連初期化を実行する。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | U/Fカメラ接続と関連初期化を実行する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamConnect_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as ConnectCamera
+
+    CALLER->>M: ConnectCamera(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-3. DisconnectCamera
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void DisconnectCamera()` |
+| 概要 | U/Fカメラ切断と停止処理を実行する。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | U/Fカメラ切断と停止処理を実行する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamConnect_Click, btnUfCamDisconnect_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as DisconnectCamera
+
+    CALLER->>M: DisconnectCamera(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-4. CheckSelectedUnits
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CheckSelectedUnits(UnitToggleButton[,] aryUnit, out List<UnitInfo> lstTgtUnit)` |
+| 概要 | 対象Cabinet選択の妥当性を検証する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | aryUnit | UnitToggleButton[,] | Y | 選択状態配列 |`n| 2 | lstTgtUnit(out) | List<UnitInfo> | Y | 有効対象Cabinet一覧 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 対象Cabinet選択の妥当性を検証する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click, btnUfCamAdjustStart_Click, tbtnUfCamSetPos_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CheckSelectedUnits
+
+    CALLER->>M: CheckSelectedUnits(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-5. CheckShootingDist
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CheckShootingDist(double dist)` |
+| 概要 | 撮影距離がモデル仕様範囲内か確認する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | dist | double | Y | 撮影距離 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 撮影距離がモデル仕様範囲内か確認する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click, tbtnUfCamSetPos_Click, btnUfCamAdjustStart_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CheckShootingDist
+
+    CALLER->>M: CheckShootingDist(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-6. ManageLogGen
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void ManageLogGen(string dir, string key)` |
+| 概要 | ログ世代を上限管理して古い世代を削除する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | dir | string | Y | ログ格納ディレクトリ |`n| 2 | key | string | Y | 世代管理キー |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | ログ世代を上限管理して古い世代を削除する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click, btnUfCamAdjustStart_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as ManageLogGen
+
+    CALLER->>M: ManageLogGen(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-7. SetThroughMode
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool SetThroughMode(bool flag)` |
+| 概要 | 全ControllerへThroughModeを反映する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | flag | bool | Y | ThroughMode設定値 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 全ControllerへThroughModeを反映する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click, timerUfCam_Tick, MeasureUfAsync, AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as SetThroughMode
+
+    CALLER->>M: SetThroughMode(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-8. dispUfMeasResult
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void dispUfMeasResult()` |
+| 概要 | 計測結果を集計してUIへ表示する。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 計測結果を集計してUIへ表示する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamResultOpen_Click, MeasureUfAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as dispUfMeasResult
+
+    CALLER->>M: dispUfMeasResult(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-1-9. StartCameraController
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void StartCameraController()` |
+| 概要 | AlphaCameraController プロセスの起動状態を確認し、未起動時のみ実行ファイルを起動する。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 起動状態確認 | `ChechCcProcess()` を呼び出し、`AlphaCameraController` プロセスの存在を確認する。 |
+| 2 | 起動情報構築 | 未起動時は `ProcessStartInfo` を生成し、`applicationPath\\Components\\AlphaCameraController.exe` を実行対象に設定する。 |
+| 3 | プロセス起動 | `Process.Start(...)` でカメラ制御プロセスを起動する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | `applicationPath` が有効で、コンポーネント実行ファイルが配置済みであること | 起動失敗で下位例外 |
+| 依存処理 | 呼出し元が撮影/AF/接続処理の開始前に呼び出すこと | カメラ制御ファイル反映失敗の可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `ChechCcProcess() == true` | 既存プロセスを再利用し、起動処理を行わない。 |
+| `ChechCcProcess() == false` | `AlphaCameraController.exe` を新規起動する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `ConnectCamera` | 接続処理開始前の制御プロセス起動保証 | 同期 |
+| `CaptureImage`（2オーバーロード） | 撮影前の制御プロセス起動保証 | 同期 |
+| `AutoFocus` | AF実行前の制御プロセス起動保証 | 同期 |
+| `ChechCcProcess` / `Process.Start` | 起動状態判定とプロセス生成 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 実行ファイル不在/起動失敗 | 下位例外 | 呼出元へ伝播 | 呼出元側で接続/撮影処理を中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Connect/Capture/AF
+    participant SCC as StartCameraController
+    participant PROC as OS Process
+
+    CALLER->>SCC: StartCameraController()
+    SCC->>SCC: ChechCcProcess()
+    alt 未起動
+        SCC->>PROC: Process.Start(AlphaCameraController.exe)
+    else 起動済み
+        SCC->>SCC: 何もしない
+    end
+    SCC-->>CALLER: 完了
+```
+
+#### 8-5-1-10. Wait4Capturing
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void Wait4Capturing(string imgPath)` |
+| 概要 | 撮影完了ファイル（jpg/arw）の生成をポーリング監視し、タイムアウト時に例外を送出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | imgPath | string | Y | 拡張子なしの撮影結果ファイルベースパス |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 監視開始時刻記録 | `startTime = DateTime.Now` を保持し、監視ループを開始する。 |
+| 2 | 生成ファイル確認 | `imgPath + ".jpg"` または `imgPath + ".arw"` の存在を確認し、存在すれば即時 return する。 |
+| 3 | 制御プロセス健全性維持 | ループ内で `StartCameraController()` を呼び、制御プロセス停止時の再起動を試みる。 |
+| 4 | タイムアウト判定 | 経過時間が `Settings.Ins.Camera.CaptureTimeout` を超えた場合、`Faild to save Picture data.` 例外を送出する。 |
+| 5 | 再試行待機 | `Thread.Sleep(1)` 後に再チェックを継続する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 呼出し元で撮影要求（ShootFlag設定・制御ファイル保存）が実施済みであること | 監視継続後タイムアウト例外 |
+| 入力値 | `imgPath` が有効な保存先を指すこと | 監視継続後タイムアウト例外 |
+| 設定値 | `CaptureTimeout` が適切な監視時間として設定済みであること | 早期/過剰待機の可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `.jpg` または `.arw` 存在 | 撮影完了とみなし正常終了する。 |
+| 制御プロセス停止 | `StartCameraController()` により再起動を試みる。 |
+| タイムアウト超過 | 例外を送出して呼出元へ失敗を通知する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CaptureImage(string)` | 撮影完了待機 | 同期 |
+| `CaptureImage(string, ShootCondition)` | 撮影完了待機 | 同期 |
+| `AutoFocus` | AF用撮影完了待機 | 同期 |
+| `StartCameraController` | 監視中の制御プロセス再起動保証 | 同期 |
+| `File.Exists` / `Thread.Sleep` | ファイル監視と再試行待機 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 保存完了タイムアウト | 経過時間判定 | 例外を呼出元へ送出 | 呼出元で再接続/再試行処理へ遷移 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as CaptureImage/AutoFocus
+    participant W as Wait4Capturing
+    participant FS as FileSystem
+    participant SCC as StartCameraController
+
+    CALLER->>W: Wait4Capturing(imgPath)
+    loop timeoutまで
+        W->>FS: jpg/arw 存在確認
+        alt 存在
+            W-->>CALLER: return
+        else 未生成
+            W->>SCC: StartCameraController()
+            W->>W: timeout判定
+        end
+    end
+    W-->>CALLER: Exception(Faild to save Picture data.)
+```
+
+#### 8-5-2-1. getUserSettingSetPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool getUserSettingSetPos(out UserSetting userSetting)` |
+| 概要 | 位置合わせ前のユーザー設定を退避する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | userSetting(out) | UserSetting | Y | 退避対象ユーザー設定 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 位置合わせ前のユーザー設定を退避する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| tbtnUfCamSetPos_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as getUserSettingSetPos
+
+    CALLER->>M: getUserSettingSetPos(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-2. setAdjustSettingSetPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void setAdjustSettingSetPos()` |
+| 概要 | 位置合わせ用の調整設定へ切り替える。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 位置合わせ用の調整設定へ切り替える。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| tbtnUfCamSetPos_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as setAdjustSettingSetPos
+
+    CALLER->>M: setAdjustSettingSetPos(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-3. setUserSettingSetPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void setUserSettingSetPos(UserSetting userSetting)` |
+| 概要 | 退避していたユーザー設定を復元する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | userSetting | UserSetting | Y | 復元対象ユーザー設定 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 退避していたユーザー設定を復元する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click, btnUfCamAdjustStart_Click, timerUfCam_Tick, tbtnUfCamSetPos_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as setUserSettingSetPos
+
+    CALLER->>M: setUserSettingSetPos(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-4. AdjustCameraPosUf
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void AdjustCameraPosUf(System.Windows.Forms.Timer timer, System.Windows.Controls.Image img, ToggleButton tbtn)` |
+| 概要 | ライブ画像解析でカメラ姿勢を評価しUIへ反映する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | timer | System.Windows.Forms.Timer | Y | 位置合わせ監視タイマ |`n| 2 | img | System.Windows.Controls.Image | Y | ガイド表示先 |`n| 3 | tbtn | ToggleButton | Y | 位置合わせON/OFFトグル |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | ライブ画像解析でカメラ姿勢を評価しUIへ反映する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| timerUfCam_Tick | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as AdjustCameraPosUf
+
+    CALLER->>M: AdjustCameraPosUf(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-5. CalcRelativePosition
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CalcRelativePosition(List<UnitInfo> lstTgtUnits, double dist, double wallH, double camH, out double pan, out double tilt, out double x, out double y)` |
+| 概要 | 対象範囲と壁条件から相対姿勢を算出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnits | List<UnitInfo> | Y | 対象Cabinet一覧 |`n| 2 | dist | double | Y | 撮影距離 |`n| 3 | wallH | double | Y | 壁高さ |`n| 4 | camH | double | Y | カメラ高さ |`n| 5 | pan/tilt/x/y(out) | double | Y | 相対姿勢算出結果 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 対象範囲と壁条件から相対姿勢を算出する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| SetCabinetPos | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CalcRelativePosition
+
+    CALLER->>M: CalcRelativePosition(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-6. LoadWallFormFile
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void LoadWallFormFile(out double[] rotateAngle)` |
+| 概要 | 壁形状ファイルから回転角配列を読み込む。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | rotateAngle(out) | double[] | Y | 壁形状回転角配列 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 壁形状ファイルから回転角配列を読み込む。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| SetCabinetPos | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as LoadWallFormFile
+
+    CALLER->>M: LoadWallFormFile(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-2-7. MoveCabinetPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void MoveCabinetPos(double pan, double tilt, double roll, double dx, double dy, double dz)` |
+| 概要 | Cabinet座標を回転・並進して再配置する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | pan/tilt/roll | double | Y | 回転量 |`n| 2 | dx/dy/dz | double | Y | 並進量 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | Cabinet座標を回転・並進して再配置する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| MeasureUfAsync, AdjustUfCamAsync, SetCabinetPos | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as MoveCabinetPos
+
+    CALLER->>M: MoveCabinetPos(...)
+    M-->>CALLER: result
+```
+
+##### 8-5-3-A. UfCamera.cs（計測・撮影・解析補助）
+
+#### 8-5-3-1. CheckOpenCvSharpDll
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CheckOpenCvSharpDll()` |
+| 概要 | OpenCvSharp関連DLLの存在を確認し不足を補完する。 |
+
+引数
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | OpenCvSharp関連DLLの存在を確認し不足を補完する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| MeasureUfAsync, AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CheckOpenCvSharpDll
+
+    CALLER->>M: CheckOpenCvSharpDll(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-2. AutoFocus
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool AutoFocus(ShootCondition condition, AfAreaSetting afArea = null)` |
+| 概要 | 撮影条件に基づいてAFを実行する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | condition | ShootCondition | Y | 撮影条件 |`n| 2 | afArea | AfAreaSetting | N | AFエリア設定 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 撮影条件に基づいてAFを実行する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| tbtnUfCamSetPos_Click, MeasureUfAsync, AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as AutoFocus
+
+    CALLER->>M: AutoFocus(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-3. GetCameraPosUf
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool GetCameraPosUf(System.Windows.Controls.Image img, out CvBlob[,] aryBlob, out CameraPosition camPos)` |
+| 概要 | タイル検出結果からカメラ姿勢を推定する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | img | System.Windows.Controls.Image | Y | 処理画像表示先 |`n| 2 | aryBlob(out) | CvBlob[,] | Y | 検出Blob配列 |`n| 3 | camPos(out) | CameraPosition | Y | 推定姿勢 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | タイル検出結果からカメラ姿勢を推定する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| MeasureUfAsync, AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetCameraPosUf
+
+    CALLER->>M: GetCameraPosUf(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-4. CheckCameraPos
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool CheckCameraPos(CvBlob[,] aryBlob, CameraPosition camPos)` |
+| 概要 | 推定姿勢が規格内か判定する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | aryBlob | CvBlob[,] | Y | 検出Blob配列 |`n| 2 | camPos | CameraPosition | Y | 推定姿勢 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 推定姿勢が規格内か判定する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| MeasureUfAsync, AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CheckCameraPos
+
+    CALLER->>M: CheckCameraPos(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-5. CaptureImage
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void CaptureImage(string imgPath) / private void CaptureImage(string imgPath, ShootCondition condition)` |
+| 概要 | カメラ撮影を実行し保存完了を待機する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | imgPath | string | Y | 保存先画像パス |`n| 2 | condition | ShootCondition | N | 撮影条件上書き |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | カメラ撮影を実行し保存完了を待機する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| CaptureUfImages, CaptureModuleAreaImage, CaptureMeasFlatImage | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as CaptureImage
+
+    CALLER->>M: CaptureImage(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-6. OutputTargetArea
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void OutputTargetArea(List<UnitInfo> lstTgtUnits, bool isGreen = false) / private void OutputTargetArea(List<UnitInfo> lstTgtUnits, int r, int g, int b)` |
+| 概要 | 対象Cabinet領域のみ点灯パターンを出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnits | List<UnitInfo> | Y | 表示対象Cabinet |`n| 2 | isGreen / r,g,b | bool / int | N | 色指定 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 対象Cabinet領域のみ点灯パターンを出力する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| CaptureUfImages, CaptureMeasFlatImage | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as OutputTargetArea
+
+    CALLER->>M: OutputTargetArea(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-7. calcMeasAreaPv
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void calcMeasAreaPv(List<UnitInfo> lstTgtCabi, string path, ViewPoint vp)` |
+| 概要 | 測定エリア解析と画素値算出を実行する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtCabi | List<UnitInfo> | Y | 対象Cabinet |`n| 2 | path | string | Y | 解析対象パス |`n| 3 | vp | ViewPoint | Y | 視点情報 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 測定エリア解析と画素値算出を実行する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| MeasureUfAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as calcMeasAreaPv
+
+    CALLER->>M: calcMeasAreaPv(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-8. DeleteUnwantedImagesMeas
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void DeleteUnwantedImagesMeas(string path)` |
+| 概要 | 計測中間画像を削除して後片付けする。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | path | string | Y | 削除対象ディレクトリ |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 計測中間画像を削除して後片付けする。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| btnUfCamMeasStart_Click | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as DeleteUnwantedImagesMeas
+
+    CALLER->>M: DeleteUnwantedImagesMeas(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-3-9. loadArwFile
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void loadArwFile(string file, out AcqARW arwHelper, bool loadLedCt = false)` |
+| 概要 | ARWファイルを読込み、ヘッダ/IFD展開、カメラ・レンズ・ズーム妥当性を検証し、必要時にLED校正テーブルを読込む。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | file | string | Y | 読込み対象ARWファイルパス |
+| 2 | arwHelper(out) | AcqARW | Y | 展開結果格納先 |
+| 3 | loadLedCt | bool | N | LED校正テーブル読込有無（既定 false） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 中断確認 | `CheckUserAbort()` でユーザー中断要求を確認する。 |
+| 2 | ARW読込 | 指定ファイルを `FileStream` で読込み、`buffer` を生成する。 |
+| 3 | ARW展開 | `AcqARW` の `SetARW` / `SetTiffHeader` / `Set*IFD` を順次実行し、失敗時は `LastErrorMessage` で例外化する。 |
+| 4 | 機種/レンズ/ズーム検証 | 設定カメラ（ILCE-6400/ILCE-7RM3）に対して Model、LensModel、FocalLength（ワイド端）を検証する。 |
+| 5 | LED校正読込（任意） | `loadLedCt == true` の場合、LEDモデル補正名を正規化して `LedCorrectionData` を読込み、SHA256を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力ファイル | `file` が存在し、ARW形式として読込可能であること | 下位例外または展開例外 |
+| 設定整合 | `Settings.Ins.Camera.Name` と撮影データの機種・レンズ・ズームが整合すること | 例外送出 |
+| 校正データ | `loadLedCt=true` 時に対応XMLが存在すること | 読込例外送出 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| カメラ設定が ILCE-6400 | 登録レンズ（LensNames[0]/[2]）かつズーム16mmを検証する。 |
+| カメラ設定が ILCE-7RM3 | 登録レンズ（LensNames[1]）かつズーム24mmを検証する。 |
+| `loadLedCt == true` | LEDモデル（S3派生含む）を正規化して `LedCorrectionData` を読込む。 |
+| それ以外の機種 | `An unregistered camera is being used.` 例外を送出する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `calcMeasAreaPv` | 計測画像解析前のARW読込 | 同期 |
+| `GetFlatImages` | Flat画像群の読込 | 同期 |
+| 調整ログ生成系処理 | Black/Flat ARW読込 | 同期 |
+| `AcqARW.Set*` / `LedCorrectionData.LoadFromXmlFile` | ARW展開と校正テーブル読込 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ARW展開失敗 | `Set*` 戻り値 false | `LastErrorMessage` 付きで上位へ送出 | 当該画像処理中断 |
+| 機種/レンズ/ズーム不一致 | 条件判定 | 例外を上位へ送出 | 計測/調整処理中断 |
+| 校正XML読込失敗 | 下位例外 | 上位へ送出 | 校正反映を中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Meas/Adjust Helper
+    participant L as loadArwFile
+    participant ARW as AcqARW
+    participant LCD as LedCorrectionData
+
+    CALLER->>L: loadArwFile(file, out arwHelper, loadLedCt)
+    L->>L: CheckUserAbort()
+    L->>ARW: SetARW/SetTiffHeader/Set*IFD
+    L->>L: 機種・レンズ・ズーム検証
+    alt loadLedCt=true
+        L->>LCD: LoadFromXmlFile(lcdFile)
+    end
+    L-->>CALLER: arwHelper
+```
+
+##### 8-5-3-B. CameraDataClass.cs（制御条件XML入出力）
+
+#### 8-5-3-10. CameraControlData.LoadFromXmlFile
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public static bool CameraControlData.LoadFromXmlFile(string path, out CameraControlData data)` |
+| 概要 | カメラ制御XMLを逆シリアル化して `CameraControlData` を復元する。ファイルアクセス競合時は再試行する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | path | string | Y | 読込み対象XMLファイルパス |
+| 2 | data(out) | CameraControlData | Y | 復元結果格納先 |
+
+返り値: bool（成功=true）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期化 | `count=0`、`data=null` で開始する。 |
+| 2 | 読込試行 | `StreamReader` + `XmlSerializer(typeof(CameraControlData))` で逆シリアル化する。 |
+| 3 | 成功判定 | 逆シリアル化成功時に true を返す。 |
+| 4 | 再試行 | 失敗時は `count` を増加し、上限超過まで `Thread.Sleep(100)` 後に再試行する。 |
+| 5 | 失敗終了 | `count > 10` の場合は例外を再送出する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力ファイル | `path` に有効なCameraControlData XMLが存在すること | 再試行後に例外送出 |
+| 書式整合 | XML構造が `CameraControlData` と整合すること | 逆シリアル化失敗 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 読込成功 | `data` を復元して true を返す。 |
+| 読込失敗かつ `count <= 10` | 100ms待機後に再試行する。 |
+| 読込失敗かつ `count > 10` | 例外を送出して終了する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CaptureImage(string)` | 前回制御条件の読込 | 同期 |
+| `CloseCamera` | CloseFlag更新前の既存条件読込 | 同期 |
+| `XmlSerializer.Deserialize` | CameraControlData復元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ファイルアクセス拒否・ロック | catchで再試行 | 11回超過時に例外送出 | 呼出元で撮影/接続処理を中断または復旧 |
+| XML不正 | 逆シリアル化例外 | 11回超過時に例外送出 | 呼出元側で新規データ生成等へ分岐 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as CaptureImage/CloseCamera
+    participant L as CameraControlData.LoadFromXmlFile
+    participant FS as FileSystem
+    participant XS as XmlSerializer
+
+    CALLER->>L: LoadFromXmlFile(path, out data)
+    loop 最大11回
+        L->>FS: StreamReader(path)
+        L->>XS: Deserialize
+        alt 成功
+            L-->>CALLER: true, data
+        else 失敗
+            L->>L: Sleep(100ms)
+        end
+    end
+    L-->>CALLER: Exception
+```
+
+#### 8-5-3-11. CameraControlData.SaveToXmlFile
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public static bool CameraControlData.SaveToXmlFile(string path, CameraControlData data)` |
+| 概要 | `CameraControlData` をXMLへシリアル化保存する。アクセス競合時は再試行し、上限超過時は例外送出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | path | string | Y | 保存先XMLファイルパス |
+| 2 | data | CameraControlData | Y | 保存対象データ |
+
+返り値: bool（成功=true）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期化 | `count=0` で保存ループを開始する。 |
+| 2 | Writer設定 | `XmlWriterSettings`（Indent/Tab/NewLineOnAttributes）を設定する。 |
+| 3 | 保存試行 | `XmlWriter.Create(path, settings)` と `XmlSerializer.Serialize(writer, data)` で保存する。 |
+| 4 | 成功判定 | 保存成功時に true を返す。 |
+| 5 | 再試行/失敗終了 | 失敗時は `count` 増加、`Thread.Sleep(100)` して再試行し、`count > 10` で例外送出する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 出力先 | `path` の親ディレクトリへ書込み可能であること | 再試行後に例外送出 |
+| 保存対象 | `data` がシリアル化可能状態であること | 保存失敗 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 保存成功 | true を返す。 |
+| 保存失敗かつ `count <= 10` | 100ms待機後に再試行する。 |
+| 保存失敗かつ `count > 10` | 例外を送出して終了する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CaptureImage`（2オーバーロード） | ShootFlag付き制御条件保存 | 同期 |
+| `AutoFocus` | AF条件保存 | 同期 |
+| `CloseCamera` | CloseFlag保存 | 同期 |
+| `XmlSerializer.Serialize` | CameraControlDataのXML保存 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 書込み競合・アクセス拒否 | catchで再試行 | 11回超過時に例外送出 | 呼出元で再接続/再試行へ分岐 |
+| 保存先不正 | 下位例外 | 11回超過時に例外送出 | 当該撮影/AF処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as CaptureImage/AutoFocus/CloseCamera
+    participant S as CameraControlData.SaveToXmlFile
+    participant XW as XmlWriter
+    participant XS as XmlSerializer
+
+    CALLER->>S: SaveToXmlFile(path, data)
+    loop 最大11回
+        S->>XW: XmlWriter.Create(path, settings)
+        S->>XS: Serialize(data)
+        alt 成功
+            S-->>CALLER: true
+        else 失敗
+            S->>S: Sleep(100ms)
+        end
+    end
+    S-->>CALLER: Exception
+```
+
+##### 8-5-3-C. MainWindow.xaml.cs（内部信号パターン出力）
+
+#### 8-5-3-12. outputIntSigFlat
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigFlat(int r = 492, int g = 492, int b = 492)` |
+| 概要 | 画面全体へ単色フラット内部信号を出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | r | int | N | Redレベル（既定492） |
+| 2 | g | int | N | Greenレベル（既定492） |
+| 3 | b | int | N | Blueレベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | コマンド生成 | Flat出力用内部信号コマンドを生成する。 |
+| 2 | 色設定 | RGBレベルをコマンドへ設定する。 |
+| 3 | 送信 | 全Controllerへ送信し表示を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | Controller通信が有効であること | 送信失敗時は上位で例外処理 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略し内部状態更新のみ行う。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` / `UfCamera` | パターン表示（Flat） | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap/Uf Flow
+    participant SIG as outputIntSigFlat
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigFlat(r,g,b)
+    SIG->>CTRL: Flatコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-3-13. outputIntSigWindow
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigWindow(int startX, int startY, int height, int width, int R = 492, int G = 492, int B = 492)` |
+| 概要 | 指定矩形領域へ内部信号ウィンドウを出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | R/G/B | int | N | 色レベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | パラメータ設定 | 開始座標、サイズ、色をコマンドへ設定する。 |
+| 2 | 出力 | 対象Controllerへウィンドウ信号を送信する。 |
+| 3 | 表示反映 | 指定領域のみ点灯状態に更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 領域条件 | 座標/サイズが画面範囲内であること | 範囲外は表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` / `UfCamera` | 対象領域表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 領域設定不正/送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap/Uf Flow
+    participant SIG as outputIntSigWindow
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigWindow(startX,startY,h,w,R,G,B)
+    SIG->>CTRL: Windowコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-3-14. outputIntSigHatch
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigHatch(int startX, int startY, int height, int width, int pitchH, int pitchV, int R = 492, int G = 492, int B = 492)` |
+| 概要 | 指定領域へハッチパターン内部信号を出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | pitchH/pitchV | int | Y | ハッチピッチ |
+| 4 | R/G/B | int | N | 色レベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | パターン設定 | 座標、サイズ、ピッチ、色をコマンドへ設定する。 |
+| 2 | 送信 | ハッチコマンドをControllerへ送信する。 |
+| 3 | 表示更新 | 対象領域へハッチ表示を反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ピッチ条件 | `pitchH`/`pitchV` が有効な正値であること | 表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` / `UfCamera` | モジュール強調表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| パラメータ不正/送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap/Uf Flow
+    participant SIG as outputIntSigHatch
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigHatch(...)
+    SIG->>CTRL: Hatchコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-3-15. outputIntSigHatchInv
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigHatchInv(int startX, int startY, int height, int width, int pitchH, int pitchV, int R = 492, int G = 492, int B = 492)` |
+| 概要 | 指定領域へ反転ハッチパターン内部信号を出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | pitchH/pitchV | int | Y | ハッチピッチ |
+| 4 | R/G/B | int | N | 色レベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | パターン設定 | 反転ハッチ用の座標/サイズ/ピッチ/色を設定する。 |
+| 2 | 送信 | 反転ハッチコマンドをControllerへ送信する。 |
+| 3 | 表示更新 | 対象領域へ反転ハッチ表示を反映する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ピッチ条件 | `pitchH`/`pitchV` が有効な正値であること | 表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` | Gap測定/補正時の反転ハッチ表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| パラメータ不正/送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap Flow
+    participant SIG as outputIntSigHatchInv
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigHatchInv(...)
+    SIG->>CTRL: HatchInvコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-3-16. outputIntSigFlatGap
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigFlatGap(int startX, int startY, int height, int width, int pitchH, int pitchV, int FlatR, int FlatG, int FlatB, int GapR, int GapG, int GapB)` |
+| 概要 | Flat色とGap色を組み合わせたGap補正用パターンを指定領域へ出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | pitchH/pitchV | int | Y | Gapパターンピッチ |
+| 4 | FlatR/FlatG/FlatB | int | Y | Flat色レベル |
+| 5 | GapR/GapG/GapB | int | Y | Gap色レベル |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | パラメータ設定 | Flat色・Gap色と領域情報をコマンドへ設定する。 |
+| 2 | 送信 | GapパターンコマンドをControllerへ送信する。 |
+| 3 | 表示更新 | Gap補正用表示へ切替える。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 色条件 | Flat/Gap色が機器許容範囲内であること | 表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` | Gap補正表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| パラメータ不正/送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap Flow
+    participant SIG as outputIntSigFlatGap
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigFlatGap(...)
+    SIG->>CTRL: FlatGapコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-3-17. outputIntSigChecker
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigChecker(int startX, int startY, int height, int width, int pitchH, int pitchV, int R = 492, int G = 492, int B = 492)` |
+| 概要 | 指定領域へチェッカーパターン内部信号を出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | pitchH/pitchV | int | Y | チェッカーピッチ |
+| 4 | R/G/B | int | N | 色レベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | パターン設定 | チェッカー出力用の領域・ピッチ・色を設定する。 |
+| 2 | 送信 | チェッカーコマンドをControllerへ送信する。 |
+| 3 | 表示更新 | 指定領域をチェッカーパターン表示へ更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 領域/ピッチ条件 | 座標・サイズ・ピッチが有効範囲内であること | 表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | 実送信を省略する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` / `UfCamera` | 位置合わせ・AF前表示・解析補助表示 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 送信失敗 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap/Uf Flow
+    participant SIG as outputIntSigChecker
+    participant CTRL as Controllers
+
+    CALLER->>SIG: outputIntSigChecker(...)
+    SIG->>CTRL: Checkerコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+##### 8-5-3-D. GapCamera.cs（Controller単位表示制御）
+
+#### 8-5-3-18. outputIntSigWindowByController
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputIntSigWindowByController(int startX, int startY, int height, int width, ControllerInfo cont, int R = 492, int G = 492, int B = 492)` |
+| 概要 | 指定したController 1台に対して、指定矩形領域へ内部信号ウィンドウを出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | startX/startY | int | Y | 表示開始座標 |
+| 2 | height/width | int | Y | 表示サイズ |
+| 3 | cont | ControllerInfo | Y | 出力対象Controller |
+| 4 | R/G/B | int | N | 色レベル（既定492） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | コマンド設定 | 対象領域、対象Controller、RGBレベルを設定する。 |
+| 2 | 単体送信 | 指定した `cont` にのみWindowコマンドを送信する。 |
+| 3 | 表示反映 | 対象Controllerの表示を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Controller | `cont` が有効な接続情報を保持していること | 送信失敗または例外 |
+| 領域条件 | 座標/サイズがパネル仕様範囲内であること | 表示不正または例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `cont == null` または通信不可 | コマンド送信失敗として上位へ伝播する。 |
+| 送信成功 | 対象Controllerのみ表示が更新される。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `GapCamera` | Controller単位の測定領域表示制御 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 通信失敗/Controller情報不正 | 下位例外 | 呼出元へ送出 | 当該表示処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Gap Flow
+    participant SIG as outputIntSigWindowByController
+    participant CONT as ControllerInfo
+
+    CALLER->>SIG: outputIntSigWindowByController(startX,startY,h,w,cont,R,G,B)
+    SIG->>CONT: Windowコマンド送信
+    SIG-->>CALLER: 完了
+```
+
+#### 8-5-4-1. GetCpCabinet
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void GetCpCabinet(... out List<UfCamCabinetCpInfo> lstCabiCpInfo, out List<UfCamCorrectionPoint> lstRefPoints)` |
+| 概要 | Cabinet方式の補正点と基準点を抽出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtCabi/lstObjCabi | List<UnitInfo> | Y | 対象/基準Cabinet |`n| 2 | objEdge/vp/logDir | ObjectiveLine/ViewPoint/string | Y | 抽出条件 |`n| 3 | lstCabiCpInfo/lstRefPoints(out) | List<> | Y | 補正点/基準点 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | Cabinet方式の補正点と基準点を抽出する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamCabinet | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetCpCabinet
+
+    CALLER->>M: GetCpCabinet(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-2. GetCp9pt
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void GetCp9pt(... out List<UfCamCabinetCpInfo> lstUnitCpInfo, out List<UfCamCorrectionPoint> lstRefPoints)` |
+| 概要 | 9点方式の補正点と基準点を抽出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtCabi/lstObjCabi | List<UnitInfo> | Y | 対象/基準Cabinet |`n| 2 | objEdge/vp/logDir | ObjectiveLine/ViewPoint/string | Y | 抽出条件 |`n| 3 | lstUnitCpInfo/lstRefPoints(out) | List<> | Y | 補正点/基準点 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 9点方式の補正点と基準点を抽出する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCam9pt | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetCp9pt
+
+    CALLER->>M: GetCp9pt(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-3. GetCpRadiator
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void GetCpRadiator(... out List<UfCamCabinetCpInfo> lstUnitCpInfo, out List<UfCamCorrectionPoint> lstRefPoints)` |
+| 概要 | Radiator方式の補正点と基準点を抽出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtCabi/lstObjCabi | List<UnitInfo> | Y | 対象/基準Cabinet |`n| 2 | objEdge/vp/logDir | ObjectiveLine/ViewPoint/string | Y | 抽出条件 |`n| 3 | lstUnitCpInfo/lstRefPoints(out) | List<> | Y | 補正点/基準点 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | Radiator方式の補正点と基準点を抽出する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamRadiator | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetCpRadiator
+
+    CALLER->>M: GetCpRadiator(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-4. GetCpEachModule
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void GetCpEachModule(... out List<UfCamCabinetCpInfo> lstUnitCpInfo, out List<UfCamCorrectionPoint> lstRefPoints)` |
+| 概要 | EachModule方式の補正点と基準点を抽出する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtCabi/lstObjCabi | List<UnitInfo> | Y | 対象/基準Cabinet |`n| 2 | objEdge/vp/logDir | ObjectiveLine/ViewPoint/string | Y | 抽出条件 |`n| 3 | lstUnitCpInfo/lstRefPoints(out) | List<> | Y | 補正点/基準点 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | EachModule方式の補正点と基準点を抽出する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamEachModule | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetCpEachModule
+
+    CALLER->>M: GetCpEachModule(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-5. GetFlatImages
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void GetFlatImages(ref List<UfCamCorrectionPoint> lstRefPoints, ref List<UfCamCabinetCpInfo> lstUnitCpInfo, string logDir)` |
+| 概要 | 調整用Flat画像を取得して補正点へ測定値を付与する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstRefPoints(ref) | List<UfCamCorrectionPoint> | Y | 基準点群 |`n| 2 | lstUnitCpInfo(ref) | List<UfCamCabinetCpInfo> | Y | 補正点群 |`n| 3 | logDir | string | Y | ログディレクトリ |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 調整用Flat画像を取得して補正点へ測定値を付与する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamCabinet, AdjustUfCam9pt, AdjustUfCamRadiator, AdjustUfCamEachModule | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as GetFlatImages
+
+    CALLER->>M: GetFlatImages(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-6. writeAdjustedData
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool writeAdjustedData(List<MoveFile> lstMoveFiles)` |
+| 概要 | 生成済み調整データをControllerへ転送する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstMoveFiles | List<MoveFile> | Y | 転送対象ファイル一覧 |
+
+返り値: bool
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 生成済み調整データをControllerへ転送する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as writeAdjustedData
+
+    CALLER->>M: writeAdjustedData(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-7. DeleteUnwantedImagesAdj
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void DeleteUnwantedImagesAdj(string path)` |
+| 概要 | 調整中間画像を削除して後片付けする。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | path | string | Y | 削除対象ディレクトリ |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 調整中間画像を削除して後片付けする。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as DeleteUnwantedImagesAdj
+
+    CALLER->>M: DeleteUnwantedImagesAdj(...)
+    M-->>CALLER: result
+```
+
+#### 8-5-4-8. outputFlatPattern
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputFlatPattern(int r, int g, int b)` |
+| 概要 | 調整後の表示復帰としてFlatパターンを出力する。 |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | r | int | Y | 赤レベル |`n| 2 | g | int | Y | 緑レベル |`n| 3 | b | int | Y | 青レベル |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 前提確認 | 入力値・内部状態・依存リソースを確認する。 |
+| 2 | 主処理実行 | 調整後の表示復帰としてFlatパターンを出力する。 |
+| 3 | 結果反映 | 呼出元へ成否を返し、必要な内部状態を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 実行前提 | 関連モジュール、設定、入出力パスが初期化済みであること | 例外送出または処理中断 |
+| 入力値 | 引数値が仕様範囲内であること | 異常通知して処理中断 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 正常系 | 主処理を完了し結果を返却する。 |
+| 異常系 | 例外時仕様に従って通知・復帰する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| AdjustUfCamAsync | 本メソッドの主な利用元 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 下位処理失敗 | 下位例外または戻り値異常 | 呼出元へ通知 | 安全停止または設定復帰 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as Caller
+    participant M as outputFlatPattern
+
+    CALLER->>M: outputFlatPattern(...)
+    M-->>CALLER: result
+```
+
+### 8-6. EstimateCameraPos連携メンバ
+
+本節は、GapCamera_詳細設計書の 8-6 と章立て・節建・粒度を合わせるための対応節である。UfCamera では推定処理を主に `GetCameraPosUf` / `CheckCameraPos` 側で実装しているため、以下は連携観点の対応定義を記載する。
+
+#### 8-6-1. CameraParameter.Set
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | カメラ内部/外部パラメータ設定に相当する連携点。UfCamera では姿勢推定前提として内部で吸収される。 |
+| Uf側対応 | `8-5-3-3 GetCameraPosUf` |
+
+#### 8-6-2. ImagePoints
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | 画像上特徴点集合の連携点。UfCamera では Blob 検出結果を入力として扱う。 |
+| Uf側対応 | `8-5-3-3 GetCameraPosUf`（`CvBlob[,] aryBlob`） |
+
+#### 8-6-3. ObjectPoints
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | 物体座標系の基準点集合連携。UfCamera では Cabinet/Unit 幾何情報から間接的に供給される。 |
+| Uf側対応 | `8-3-1 SetCabinetPos`、`8-3-6 SetCamPosTarget` |
+
+#### 8-6-4. Estimate
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | 姿勢推定実行の連携点。UfCamera では位置推定処理を `GetCameraPosUf` に集約する。 |
+| Uf側対応 | `8-5-3-3 GetCameraPosUf` |
+
+#### 8-6-5. Rot
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | 推定回転成分（Rotation）の受渡し連携点。 |
+| Uf側対応 | `8-5-3-3 GetCameraPosUf` の `CameraPosition` 内回転成分 |
+
+#### 8-6-6. Trans
+
+| 項目 | 内容 |
+|------|------|
+| 概要 | 推定並進成分（Translation）の受渡し連携点。 |
+| Uf側対応 | `8-5-3-3 GetCameraPosUf` の `CameraPosition` 内並進成分 |
+
+### 8-7. 相互参照メソッド
+
+本節は、GapCamera_詳細設計書の 8-7（UfCamera参照メソッド）と対になる参照節として、UfCamera から GapCamera 側処理を参照する箇所を定義する。
+
+#### 8-7-1. 参照方針
+
+| 項目 | 内容 |
+|------|------|
+| 参照目的 | 共通表示信号や補正前提条件の整合を、Gap/Uf 間で仕様同期する。 |
+| 運用方針 | 実装責務は保持し、重複実装は行わず参照リンクで追跡する。 |
+
+#### 8-7-2. 参照対象メソッド一覧
+
+| No. | Gap側メソッド | 参照理由 | Uf側での利用箇所 |
+|-----|---------------|----------|------------------|
+| 1 | `outputIntSigWindowByController` | Controller単位表示仕様の整合 | `8-5-3-18`（Gap側実装参照） |
+| 2 | `outputIntSigFlatGap` | Gap補正表示ロジック整合 | `8-5-3-16` 連携仕様 |
+| 3 | `setGapCvCell` 系 | SDCP書込み整合 | `8-4` 調整仕様比較時の参照 |
+
+#### 8-7-3. メソッド別記載（参照定義）
+
+| 参照先 | 参照粒度 | Uf側反映規則 |
+|--------|----------|--------------|
+| GapCamera_詳細設計書 8-5/8-6 | メソッド単位 | 署名変更・分岐追加時は本書 8-5-3 および本節を同時更新する。 |
+| GapCamera_詳細設計書 8-3 | 処理群単位 | SDCP/ROM書込み仕様変更時は本書 8-4 の前提条件へ反映する。 |
+
 ---
 
 ## 9. 変更履歴
@@ -2554,10 +6455,33 @@ sequenceDiagram
 | 0.1 | 2026/04/17 | システム分析チーム | 新規作成（UfCamera.cs主体） |
 | 0.2 | 2026/04/17 | システム分析チーム | GapCamera詳細設計書と章立てを整合（9章採番、10章記入ガイド追加） |
 | 0.3 | 2026/04/17 | システム分析チーム | 8章の粒度を詳細化（前提条件、主要呼出し先、例外仕様、処理手順を補強。レンズ選択イベントを追加） |
+| 0.4 | 2026/04/20 | システム分析チーム | 8章メソッド仕様の不足節を補完し、GapCamera詳細設計書と同等テンプレート（入力条件・条件分岐・主要呼出し先）へ統一 |
 | 0.4 | 2026/04/17 | システム分析チーム | 8章へシーケンス図を追加（UIイベント、計測主処理、調整主処理、座標設定、画像取得フロー） |
 | 0.5 | 2026/04/17 | システム分析チーム | 補助メソッドを含む8章全メソッドへシーケンス図を追加し、図の密度をGapCamera詳細設計書に整合 |
 | 0.6 | 2026/04/17 | システム分析チーム | MakeUFData主要呼出し（ExtractFmt/Fmt2XYZ/ModifyXYZCam/Statistics）を8-4へメソッド単位で追加し、粒度を整合 |
 | 0.7 | 2026/04/17 | システム分析チーム | Crosstalk分岐の MakeUFData 呼出し（Fmt2XYZ_Crosstalk/Statistics_CameraUF）を8-4へ追加し、実装分岐粒度を整合 |
+| 0.8 | 2026/04/20 | システム分析チーム | 8-5 を一覧表から詳細テンプレート形式へ再編（引数・処理概要・前提条件・条件分岐・主要呼出し先・例外時仕様・シーケンス図を追加） |
+| 0.9 | 2026/04/20 | システム分析チーム | 8-5 をメソッド単位（8-5-x-x）へ再構成し、各節を既存テンプレート項目へ統一 |
+| 1.0 | 2026/04/20 | システム分析チーム | 8-4-12 `CalcReferenceValue` を単独節として追加し、実装準拠の分岐仕様（Default/1辺/2辺）を記載 |
+| 1.1 | 2026/04/20 | システム分析チーム | 8-4-13 `OverWritePixelData` を単独節として追加し、モデル別長さ選択・CRC再計算・書出しフローを記載 |
+| 1.2 | 2026/04/20 | システム分析チーム | 8-4-14 `OverWritePixelDataWithCrosstalk` を単独節として追加し、VDI更新・CTC値書込み・条件付き画素上書きフローを記載 |
+| 1.3 | 2026/04/20 | システム分析チーム | 8-4-15 を追加し、`OverWritePixelData` と `OverWritePixelDataWithCrosstalk` の差分比較表と使い分け指針を追記 |
+| 1.4 | 2026/04/20 | システム分析チーム | 8-4-15 に呼出し元一覧を追加し、UfCamera系/UfAdjust系/UfManualでの使い分けを明確化 |
+| 1.5 | 2026/04/20 | システム分析チーム | 8-3-6 `SetCamPosTarget` を単独節として追加し、目標姿勢算出・モデル別分岐・前提条件を明記 |
+| 1.6 | 2026/04/20 | システム分析チーム | 8-3-7 `searchUnit` を単独節として追加し、座標検索ロジック・戻り値仕様・呼出し元を明記 |
+| 1.7 | 2026/04/20 | システム分析チーム | 8-5-1-9 `StartCameraController` を単独節として追加し、プロセス起動判定・起動フロー・呼出し元を明記 |
+| 1.8 | 2026/04/20 | システム分析チーム | 8-5-1-10 `Wait4Capturing` を単独節として追加し、ファイル監視・タイムアウト・再起動連携を明記 |
+| 1.9 | 2026/04/20 | システム分析チーム | 8-5-3-9 `loadArwFile` を単独節として追加し、ARW展開・機種検証・LED校正読込分岐を明記 |
+| 2.0 | 2026/04/20 | システム分析チーム | 8-4-16 `checkDataFile` を単独節として追加し、バックアップ探索順（Latest/Previous/Initial）と返却条件を明記 |
+| 2.1 | 2026/04/20 | システム分析チーム | 8-5-3-10/11 に `CameraControlData.LoadFromXmlFile` / `CameraControlData.SaveToXmlFile` を追加し、再試行仕様と呼出し元を明記 |
+| 2.2 | 2026/04/20 | システム分析チーム | 8-5-3-12〜17 に `outputIntSig*`（Flat/Window/Hatch/HatchInv/FlatGap/Checker）を追加し、Gap/Ufでの表示用途と引数仕様を明記 |
+| 2.3 | 2026/04/20 | システム分析チーム | 8-5-3-18 `outputIntSigWindowByController` を追加し、Controller単位出力の用途・引数・例外伝播を明記 |
+| 2.4 | 2026/04/20 | システム分析チーム | 8章の節順を機能/モジュール軸で再整理し、章冒頭の並び規則表と8-5内ブロック定義を追加 |
+| 2.5 | 2026/04/20 | システム分析チーム | 8-5-3 内をモジュール小見出し（UfCamera / CameraDataClass / MainWindow / GapCamera）で物理配置し、個別メソッドの並びを明確化 |
+| 2.6 | 2026/04/20 | システム分析チーム | GapCamera詳細設計書との節構成整合のため、8-6（EstimateCameraPos連携メンバ）と8-7（GapCamera参照メソッド）を追加 |
+| 2.7 | 2026/04/20 | システム分析チーム | GapCamera詳細設計書と節名語彙を統一するため、8-1〜8-7 の見出し表現を共通化 |
+| 2.8 | 2026/04/20 | システム分析チーム | 8章冒頭の章構成表について「主な責務」欄の語彙をGapCamera詳細設計書と完全一致に統一 |
+| 2.9 | 2026/04/20 | システム分析チーム | AdjustUfCam*（8-4-1〜8-4-5）における ExtractFmt/Fmt2XYZ/Fmt2XYZ_Crosstalk/ModifyXYZCam/Statistics の条件分岐を実装準拠で明確化 |
 
 ---
 
@@ -2566,3 +6490,8 @@ sequenceDiagram
 - `ForCrosstalkCameraUF`、`NO_PROC`、`NO_CAP` 等の条件コンパイル差分は、運用ビルド定義に合わせて本書を更新する。
 - U/F調整方式の追加・削除時は、4章モジュール仕様、6章メッセージ仕様、8章メソッド仕様を同時に更新する。
 - MakeUFData 側の入出力仕様改版時は、7章IF項目と8-4調整系メソッドの処理手順を同時に更新する。
+
+
+
+
+

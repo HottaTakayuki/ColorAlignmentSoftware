@@ -795,7 +795,19 @@ sequenceDiagram
 
 ## 8. メソッド仕様
 
-### 8-1. UIイベント・位置合わせ系メソッド
+本章は、UfCamera_詳細設計書と章立て・節建・粒度を合わせるため、以下の節順で記載する。
+
+| 並び順 | 節 | 主担当モジュール | 主な責務 |
+|--------|----|------------------|----------|
+| 1 | 8-1 | MainWindow / GapCamera | UIイベント起点の制御処理 |
+| 2 | 8-2 | GapCamera | 計測・補正の業務処理 |
+| 3 | 8-3 | GapCamera / SDCPClass | 設定値の取得・設定・書込み |
+| 4 | 8-4 | GapCamera | 補助計算と補正演算 |
+| 5 | 8-5 | TransformImage | 連携モジュール呼出し |
+| 6 | 8-6 | EstimateCameraPos | 姿勢推定連携メンバ定義 |
+| 7 | 8-7 | UfCamera 参照節 | 相互参照方針と追従ルール |
+
+### 8-1. UIイベント・制御メソッド
 
 #### 8-1-1. btnGapCamBackup_Click
 
@@ -1569,6 +1581,99 @@ sequenceDiagram
         end
         UI->>PRG: Close
         UI->>UI: releaseButton / tcMain有効化
+    end
+```
+
+#### 8-1-10. AdjustCameraPosition
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void AdjustCameraPosition(System.Windows.Forms.Timer timer, System.Windows.Controls.Image img, ToggleButton tbtn)` |
+| 概要 | 位置合わせ用の撮影・タイル検出・姿勢推定を実行し、ガイド表示と次工程可否を更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | timer | System.Windows.Forms.Timer | Y | 位置合わせ更新周期を制御するタイマ |
+| 2 | img | System.Windows.Controls.Image | Y | 処理画像とガイドを表示するImageコントロール |
+| 3 | tbtn | ToggleButton | Y | 位置合わせON/OFF状態を持つトグル |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | タイマ停止・作業パス初期化 | 冒頭で `timer.Enabled = false` とし、`black/raster/tile` の作業ファイルパスを初期化する。 |
+| 2 | 撮影/検出 | `captureCamPos`、`detectTileCamPos`、`detectSatAreaCamPos` を実行し、位置合わせ素材を取得する。 |
+| 3 | タイル整列と姿勢推定 | `getTilePosition` でタイル格子を整列し、`estimateCamPos` と `MoveCabinetPos` でPan/Tilt/Roll・XYZを推定する。 |
+| 4 | 判定/UI反映 | 規格内判定に応じて `textboxGapCamPos` と矢印UIを更新し、`btnGapCamMeasStart`/`btnGapCamAdjStart` の可否を切替える。 |
+| 5 | 終了判定 | トグル状態を再確認し、OFF時はThroughMode解除・設定復帰・内部信号OFFを実行する。ON時はタイマを再開する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 位置合わせ状態 | ThroughModeと位置合わせ用設定が事前に有効化されていること | 撮影/表示失敗として終了処理へ遷移 |
+| 表示先 | `img` が有効な表示コントロールであること | 処理画像表示に失敗し下位例外 |
+| 幾何情報 | `m_CabinetXNum_CamPos`、`m_CabinetYNum_CamPos`、規格値群が設定済みであること | 姿勢推定または判定で異常 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_CamPos_*` | Pan/Tilt/Roll、XYZ、辺長 | 手順3 |
+| `m_Enable_Capture_MaskImage` | 次回黒/ラスター再取得要否 | 判定結果に応じて更新 |
+| `textboxGapCamPos` | `OK/NG` と色 | 手順4 |
+| `btnGapCamMeasStart` / `btnGapCamAdjStart` | 次工程の活性/非活性 | 手順4 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | ThroughMode解除や内部信号OFFをスキップする。 |
+| `tbtnGapCamSetPos.IsChecked != true` | 中断扱いで復帰処理を実行し、その時点で終了する。 |
+| 規格判定OK | `textboxGapCamPos = OK`、次工程を有効化する。 |
+| 規格判定NG | ガイド矢印と `NG` 表示を更新し、通常モードでは次工程を無効化する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `captureCamPos` | 位置合わせ用画像取得 | 同期 |
+| `detectTileCamPos` / `detectSatAreaCamPos` | タイル・飽和領域抽出 | 同期 |
+| `getTilePosition` | タイル点の行列整列 | 同期 |
+| `estimateCamPos` / `MoveCabinetPos` | カメラ姿勢推定と座標反映 | 同期 |
+| `SetThroughMode` / `setUserSettingSetPos` / `stopIntSig` | 位置合わせ終了時の復帰処理 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知 | 後処理 |
+|--------|----------|------|--------|
+| 撮影/検出失敗 | `try-catch` | `CAS Error!` ダイアログ | トグルOFF、タブ復帰、ThroughMode解除、設定復帰、内部信号OFF |
+| タイル整列失敗 | `try-catch` | UIガイド更新不可 | 処理継続で再試行機会を残す |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant T as timerGapCam
+    participant M as AdjustCameraPosition
+    participant CAM as CameraControl
+    participant ANA as estimateCamPos
+    participant UI as GapCameraView
+
+    T->>M: Tick
+    M->>M: timer.Enabled = false
+    M->>CAM: captureCamPos / detectTileCamPos / detectSatAreaCamPos
+    M->>ANA: getTilePosition / estimateCamPos / MoveCabinetPos
+    M->>UI: ガイド/矢印/OK-NG表示更新
+    alt トグルOFF
+        M->>UI: ThroughMode解除 / 設定復帰
+    else トグルON継続
+        M->>T: timer.Enabled = true
     end
 ```
 
@@ -2570,7 +2675,346 @@ sequenceDiagram
     SW-->>CAP: レベル別Gap画像保存完了
 ```
 
-### 8-3. SDCP取得・設定・書込みメソッド
+#### 8-2-11. GetCameraPosition
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private bool GetCameraPosition(System.Windows.Controls.Image img)` |
+| 概要 | 計測開始前にカメラ姿勢を1回取得し、規格判定用の内部状態を更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | img | System.Windows.Controls.Image | Y | 撮影画像や処理結果を表示するImageコントロール |
+
+返り値: 姿勢取得結果（bool）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 作業パス初期化 | `black/raster/tile` の一時パスを設定し、`m_Enable_Capture_MaskImage = true` にする。 |
+| 2 | 撮影/タイル検出 | `captureCamPos` と `detectTileCamPos(..., true)` を実行して姿勢推定用データを取得する。 |
+| 3 | タイル整列 | `getTilePosition` で `m_CabinetXNum_CamPos*2` × `m_CabinetYNum_CamPos*2` の格子へ整列する。 |
+| 4 | 姿勢反映 | `estimateCamPos`、`MoveCabinetPos`、`calc_Spec_by_Zdistance` を実行し、姿勢関連の内部値を更新する。 |
+| 5 | 判定結果返却 | 規格判定に基づき `true/false` を返す。下位例外は上位へ送出する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 表示先 | `img` が有効であること | 撮影処理または表示処理例外 |
+| カメラ位置基準 | `SetCamPosTarget` 実行済みで、対象Cabinetと規格が設定済みであること | 判定不能または姿勢不適合 |
+| 撮影環境 | タイル検出可能な画像が取得できること | 下位例外を上位へ送出 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_CamPos_BlackImagePath` など | 一時画像パス | 手順1 |
+| `m_Enable_Capture_MaskImage` | 強制再取得フラグ | 手順1 |
+| `m_CamPos_*` | 姿勢・辺長・座標系関連値 | 手順4 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CAP` | 実撮影をスキップし既存ファイル前提で進行する。 |
+| タイル整列失敗 | 例外を送出し、呼出元で再試行/失敗判断する。 |
+| 規格判定NG | `false` を返し、呼出元に姿勢不適合を通知する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `captureCamPos` | 姿勢推定用画像取得 | 同期 |
+| `detectTileCamPos` | タイル領域抽出 | 同期 |
+| `getTilePosition` | タイル整列 | 同期 |
+| `estimateCamPos` | Pan/Tilt/Roll・XYZ推定 | 同期 |
+| `MoveCabinetPos` / `calc_Spec_by_Zdistance` | Cabinet位置反映・規格再計算 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 撮影失敗 | 下位 `Exception` | 上位へ再送出 | 呼出元で失敗処理 |
+| タイル整列失敗 | 下位 `Exception` | 上位へ再送出 | 呼出元で再試行/中断判断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as measure/adjust
+    participant M as GetCameraPosition
+    participant CAM as CameraControl
+    participant ANA as estimateCamPos
+
+    CALLER->>M: GetCameraPosition(img)
+    M->>CAM: captureCamPos
+    M->>CAM: detectTileCamPos
+    M->>ANA: getTilePosition / estimateCamPos
+    M->>ANA: MoveCabinetPos / calc_Spec_by_Zdistance
+    M-->>CALLER: true/false
+```
+
+#### 8-2-12. SaveMatBinary
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe bool SaveMatBinary(Mat mat, string filename)` |
+| 概要 | OpenCV `Mat` を独自バイナリ形式で保存し、必要に応じて暗号化してARW元ファイルを削除する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | mat | Mat | Y | 保存対象のOpenCV画像データ |
+| 2 | filename | string | Y | 拡張子なしの保存先ベースパス |
+
+返り値: 保存結果（bool）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 出力パス決定 | `filename` に `.matbin` を付与して保存先を決定する。 |
+| 2 | 出力用Mat準備 | `Coverity` 有効時は `using`、無効時は通常生成で `destMat` を作成し、`mat.ConvertTo(destMat, mat.Type())` を実行する。 |
+| 3 | ヘッダ書込 | `type`、`width`、`height`、`channels` を `BinaryWriter` で順に書き出す。 |
+| 4 | 画素列書込 | 1行ずつ `Marshal.Copy` で `byte[]` へコピーし、行単位で順次出力する。 |
+| 5 | 暗号化/平文削除 | `NoEncript` 無効時は `EncryptFile(filename, filename + "x", ...)` を実行し、平文 `.matbin` を削除する。 |
+| 6 | 関連ファイル整理 | 同名 `.arw` が存在する場合は削除し、`true` を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力画像 | `mat` が有効な `Mat` であること | 下位例外で保存失敗 |
+| 保存先 | `filename` の親フォルダへ書込み可能であること | ファイル作成例外 |
+| 暗号化設定 | `NoEncript` 無効時は暗号化キー/IVが有効であること | 暗号化例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `Coverity` | `destMat` を `using` スコープで扱い、明示 `Dispose` を省略する。 |
+| `NoEncript` | 暗号化せず平文 `.matbin` を残す。 |
+| 同名 `.arw` 存在 | `.matbin` 保存後に削除してストレージを整理する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat.ConvertTo` | 出力用 `Mat` へ型変換 | 同期 |
+| `BinaryWriter` / `FileStream` | ヘッダ・画素データ書込 | 同期 |
+| `Marshal.Copy` | 行単位のメモリコピー | 同期 |
+| `EncryptFile` | 保存ファイルの暗号化 | 同期 |
+| `File.Delete` | 平文 `.matbin` / 元 `.arw` の削除 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ファイル作成失敗 | 下位 `Exception` | 呼出元へ再送出 | 保存中断 |
+| 暗号化失敗 | 下位 `Exception` | 呼出元へ再送出 | 中間ファイルが残る可能性あり |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as capture/analysis
+    participant M as SaveMatBinary
+    participant FS as FileSystem
+    participant ENC as EncryptFile
+
+    CALLER->>M: SaveMatBinary(mat, filename)
+    M->>M: filename += .matbin
+    M->>FS: ヘッダ書込
+    loop 各行
+        M->>FS: 画素列書込
+    end
+    alt NoEncript無効
+        M->>ENC: EncryptFile(matbin -> matbinx)
+        M->>FS: 平文 matbin 削除
+    end
+    M->>FS: 同名 arw 削除
+    M-->>CALLER: true
+```
+
+#### 8-2-13. LoadMatBinary
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `unsafe bool LoadMatBinary(string filename, out Mat mat)` |
+| 概要 | 独自バイナリ形式の `Mat` を復号・読込して OpenCV `Mat` を再構成する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | filename | string | Y | 拡張子なしの入力ベースパス |
+| 2 | mat(out) | Mat | Y | 復元後のOpenCV画像データ格納先 |
+
+返り値: 読込結果（bool）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 中断確認 | 冒頭で `CheckUserAbort()` を呼び、ユーザー中断を確認する。 |
+| 2 | 入力パス決定 | `filename` に `.matbin` を付与し、`NoEncript` 無効時は `.matbinx` から復号する。 |
+| 3 | ヘッダ読込 | `type`、`width`、`height`、`channels` を順次読込み、出力 `Mat` を生成する。 |
+| 4 | 画素列復元 | 1行ずつ `byte[]` を読込み、`Marshal.Copy` で `mat.Data` へコピーする。 |
+| 5 | 後処理 | `NoEncript` 無効時は復号した平文 `.matbin` を削除し、`true` を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力ファイル | `filename.matbin` または `filename.matbinx` が存在すること | FileOpen例外 |
+| 中断状態 | ユーザー中断要求が未発生であること | `CameraCasUserAbortException` 等で中断 |
+| ヘッダ整合性 | 先頭32byteが type/width/height/ch として読めること | `Mat` 生成失敗または復元不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NoEncript` | 復号を行わず平文 `.matbin` を直接読込む。 |
+| `NoEncript` 無効 | `.matbinx` を一時平文 `.matbin` へ復号してから読込む。 |
+| ユーザー中断 | 冒頭 `CheckUserAbort()` で即時中断する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CheckUserAbort` | ユーザー中断確認 | 同期 |
+| `DecryptFile` | 暗号化 `.matbinx` の復号 | 同期 |
+| `FileStream` / `BitConverter.ToInt64` | ヘッダ情報読込 | 同期 |
+| `Marshal.Copy` | 行単位の画素データ復元 | 同期 |
+| `File.Delete` | 復号平文 `.matbin` の削除 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| ユーザー中断 | `CheckUserAbort` 例外 | 呼出元へ再送出 | 読込中断 |
+| 復号失敗 | 下位 `Exception` | 呼出元へ再送出 | 平文ファイル未生成 |
+| 読込失敗 | 下位 `Exception` | 呼出元へ再送出 | `mat` は未初期化または途中状態 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as analysis
+    participant M as LoadMatBinary
+    participant DEC as DecryptFile
+    participant FS as FileSystem
+
+    CALLER->>M: LoadMatBinary(filename, out mat)
+    M->>M: CheckUserAbort()
+    alt NoEncript無効
+        M->>DEC: DecryptFile(matbinx -> matbin)
+    end
+    M->>FS: ヘッダ読込
+    loop 各行
+        M->>FS: 画素列読込
+    end
+    alt NoEncript無効
+        M->>FS: 平文 matbin 削除
+    end
+    M-->>CALLER: true, mat
+```
+
+#### 8-2-14. checkFileSize
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `bool checkFileSize(string path)` |
+| 概要 | 画像保存ファイルのサイズ安定と排他オープン可否を確認し、保存完了を判定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | path | string | Y | 保存完了判定対象のファイルパス |
+
+返り値: 判定結果（bool）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | サイズ安定監視開始 | `Stopwatch` を起動し、対象ファイルのサイズを100ms間隔で2回取得する。 |
+| 2 | サイズ変動判定 | サイズが一致すれば安定とみなし、10秒超過なら失敗として終了する。 |
+| 3 | 排他オープン確認 | `FileShare.None` で `FileStream` を開けるかを繰返し確認する。 |
+| 4 | タイムアウト判定 | 排他オープンが10秒以内に成功しなければ失敗とする。 |
+| 5 | 結果返却 | サイズ安定かつ排他オープン成功時に `true` を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象ファイル | `path` にファイルが生成済みであること | `FileInfo` / `FileStream` の下位例外または `false` |
+| 監視時間 | 保存完了まで10秒以内であること | `false` を返却 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| サイズ2回一致 | サイズ安定とみなし排他確認フェーズへ進む。 |
+| サイズ未一致が10秒継続 | 監視失敗として `false` を返す。 |
+| 排他オープン成功 | 保存完了とみなし `true` を返す。 |
+| 排他オープン失敗が10秒継続 | 書込継続中またはロック中として `false` を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `FileInfo.Length` | ファイルサイズ監視 | 同期 |
+| `Stopwatch` | タイムアウト管理 | 同期 |
+| `FileStream(path, ..., FileShare.None)` | 書込完了・排他解放確認 | 同期 |
+| `Thread.Sleep` | 監視間隔待機 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| サイズ未安定 | タイムアウト判定 | 例外なし | `false` を返却 |
+| 排他解放待ち超過 | `catch` + タイムアウト判定 | 例外なし | `false` を返却 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as capture
+    participant M as checkFileSize
+    participant FS as FileSystem
+
+    CALLER->>M: checkFileSize(path)
+    loop 10秒以内
+        M->>FS: FileInfo.Length を2回取得
+        alt サイズ一致
+            break サイズ安定
+        end
+    end
+    alt サイズ未安定
+        M-->>CALLER: false
+    else サイズ安定
+        loop 10秒以内
+            M->>FS: FileStream(FileShare.None) 試行
+            alt Open成功
+                M-->>CALLER: true
+            end
+        end
+        M-->>CALLER: false
+    end
+```
+
+### 8-3. 設定・データ書込みメソッド
 
 #### 8-3-1. setGapCvUnit
 
@@ -3048,7 +3492,179 @@ sequenceDiagram
     end
 ```
 
-### 8-4. 補助計算メソッド
+#### 8-3-8. setGapCellCorrectValue
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void setGapCellCorrectValue(UnitInfo unit, CellNum CellNo, EdgePosition targetEdge, int value)` |
+| 概要 | Cell境界補正値を対象Unitと隣接Unitへ反映し、必要に応じSDCP送信と変更Unit管理を行う |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | unit | UnitInfo | Y | 補正対象の基準Cabinet |
+| 2 | CellNo | CellNum | Y | 対象Cell番号 |
+| 3 | targetEdge | EdgePosition | Y | 設定対象の辺 |
+| 4 | value | int | Y | 反映する補正値 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合はreturnする。 |
+| 2 | 対象Unit反映 | 対象Cell/Edgeへ `value` を設定し、`BulkSetCorrectValue` 無効時はSDCP送信する。 |
+| 3 | 内部配列更新 | `lstGapCamCp` の対象Unit側 `AryCvCell` を更新し、`lstModifiedUnits` へ追加する。 |
+| 4 | 隣接側解決 | `getNextCell` で隣接Unit/Cell/Edgeを取得する。 |
+| 5 | 隣接Unit反映 | 隣接側へ同値を反映し、条件に応じSDCP送信、`lstGapCamCp` と `lstModifiedUnits` を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること | null時は無処理終了 |
+| 補正値 | `value` が機器仕様範囲内であること | 下位処理または後続Writeで異常の可能性 |
+| 内部配列 | `lstGapCamCp` が対象Cabinet情報を保持していること | 対象値更新漏れの可能性 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstGapCamCp` | 対象/隣接Cell補正値 | 手順3,5 |
+| `lstModifiedUnits` | Write対象Cabinet一覧 | 手順3,5 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `NO_CONTROLLER` | SDCP送信を行わず内部状態更新のみ実施する。 |
+| `BulkSetCorrectValue` | 隣接Unitが `lstGapCamCp` に含まれない場合のみSDCP送信する。 |
+| `nextUnit == null` | 隣接反映を行わず対象Unitのみで終了する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `getNextCell` | 隣接Unit/Cell/Edgeの解決 | 同期 |
+| `sendSdcpCommand` | Gap Cell補正値設定コマンド送信 | 同期 |
+| `SDCPClass.CmdGapCellCorrectValueSet` | 設定コマンド雛形 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SDCP送信失敗 | 下位 `Exception` | 呼出元へ再送出 | 当該補正反映を中断 |
+| 隣接Unitなし | `nextUnit == null` 判定 | 例外なし | 対象Unitのみ更新して終了 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as adjust/restore
+    participant M as setGapCellCorrectValue
+    participant N as getNextCell
+    participant SDCP as Controller
+
+    CALLER->>M: setGapCellCorrectValue(unit, cell, edge, value)
+    M->>M: 対象Unitの内部値更新
+    alt SDCP送信あり
+        M->>SDCP: 対象Unitへ設定送信
+    end
+    M->>N: getNextCell(...)
+    alt nextUnitあり
+        M->>M: 隣接Unitの内部値更新
+        alt 送信条件成立
+            M->>SDCP: 隣接Unitへ設定送信
+        end
+    end
+    M-->>CALLER: 完了
+```
+
+#### 8-3-9. setGapCellCorrectValueForXML
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void setGapCellCorrectValueForXML(UnitInfo unit, CellNum CellNo, EdgePosition targetEdge, int value)` |
+| 概要 | XML出力用に、SDCP送信なしで `lstGapCamCp` の対象/隣接Cell補正値を更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | unit | UnitInfo | Y | 補正対象の基準Cabinet |
+| 2 | CellNo | CellNum | Y | 対象Cell番号 |
+| 3 | targetEdge | EdgePosition | Y | 設定対象の辺 |
+| 4 | value | int | Y | XML出力用に保持する補正値 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力検証 | `unit == null` の場合はreturnする。 |
+| 2 | 対象Unit更新 | `lstGapCamCp` の対象Unit・対象Cell・対象Edgeへ `value` を格納する。 |
+| 3 | 隣接側解決 | `getNextCell` で隣接Unit/Cell/Edgeを取得する。 |
+| 4 | 隣接Unit更新 | 隣接Unitが存在する場合、反対側Edgeへ同値を格納する。 |
+| 5 | 終了 | SDCP送信は行わず、メモリ上のXML出力対象データのみ更新して終了する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象Unit | `unit` が有効であること | null時は無処理終了 |
+| 内部配列 | `lstGapCamCp` がXML出力対象を保持していること | 対象更新漏れの可能性 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `lstGapCamCp` | 対象/隣接CellのXML出力用補正値 | 手順2,4 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `nextUnit == null` | 隣接側更新を行わず対象Unitのみ更新する。 |
+| 対象Unit未検出 | 一致要素がない場合は該当更新をスキップする。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `getNextCell` | 隣接Unit/Cell/Edgeの解決 | 同期 |
+| `lstGapCamCp` | XML出力対象データ更新先 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 隣接Unitなし | `nextUnit == null` 判定 | 例外なし | 対象Unitのみ更新して終了 |
+| 対象未存在 | ループ未一致 | 例外なし | 該当要素のみ未更新で終了 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as backup/xml-save
+    participant M as setGapCellCorrectValueForXML
+    participant N as getNextCell
+    participant BUF as lstGapCamCp
+
+    CALLER->>M: setGapCellCorrectValueForXML(unit, cell, edge, value)
+    M->>BUF: 対象Unitの対象辺を更新
+    M->>N: getNextCell(...)
+    alt nextUnitあり
+        M->>BUF: 隣接Unitの反対辺を更新
+    end
+    M-->>CALLER: 完了
+```
+
+### 8-4. 補助計算・補正演算メソッド
 
 #### 8-4-1. getCv
 
@@ -3075,6 +3691,12 @@ sequenceDiagram
 |------|------|
 | `No_CabinetCorrectionValue` | Unit参照時は固定値128を返す。 |
 | `CorrectTargetEdge` | Left/Bottom系ポジションも取得対象に含める。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし（内部プロパティ参照のみ） | `GapCamCorrectionValue` / `GapCamCp` から対象値を選択取得 | 同期 |
 
 例外時仕様
 
@@ -3113,6 +3735,12 @@ sequenceDiagram
 |---------|----------|------|
 | 1 | 入力受領 | 現在値 `curReg` と計測ゲイン `gapGain` を受け取る。 |
 | 2 | 戻り値返却 | 現行実装では常に `0` を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 現行実装は計算ロジック未実装（定数返却のみ） | 同期 |
 
 実装状態
 
@@ -3160,6 +3788,13 @@ sequenceDiagram
 |------|------|----------|
 | `gapGain` | 0以外であること | 0付近は計算値発散（呼出元で実質回避が前提） |
 | レジスタ範囲 | `curReg` が整数値であること | 演算後クランプで補正 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Math`（四則演算/丸め） | ゲイン-レジスタ相互変換と四捨五入相当計算 | 同期 |
+| `correctValue_Min` / `correctValue_Max` | 補正値の上下限クランプ | 同期 |
 
 例外時仕様
 
@@ -3215,6 +3850,15 @@ sequenceDiagram
 |------|------|
 | `CorrectTargetEdge` | 8方向ポジションを明示対応し、隣接辺のマッピングを切替える。 |
 | `Coverity` | null判定と座標参照順を安全側へ変更する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `sendSdcpCommand` | 対象Unit/隣接UnitへGap補正値コマンドを送信 | 同期 |
+| `SDCPClass.CmdGapCorrectValueSet` | Gap補正値設定コマンド雛形の生成元 | 同期 |
+| `dicController` | Unitに対応するControllerの送信先IP解決 | 同期 |
+| `aryUnitUf` | 隣接Unit探索（反対辺への同値反映先決定） | 同期 |
 
 例外時仕様
 
@@ -4321,6 +4965,1368 @@ sequenceDiagram
 
 ---
 
+#### 8-4-16. checkWallEdge
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `void checkWallEdge(List<UnitInfo> lstTgtUnit, out bool topEdge, out bool bottomEdge, out bool leftEdge, out bool rightEdge)` |
+| 概要 | 選択Cabinet群の外周について、物理的な壁端または欠損端かどうかを上下左右別に判定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnit | List<UnitInfo> | Y | 壁端判定対象のCabinet集合 |
+| 2 | topEdge(out) | bool | Y | 上辺が壁端/欠損端かの出力 |
+| 3 | bottomEdge(out) | bool | Y | 下辺が壁端/欠損端かの出力 |
+| 4 | leftEdge(out) | bool | Y | 左辺が壁端/欠損端かの出力 |
+| 5 | rightEdge(out) | bool | Y | 右辺が壁端/欠損端かの出力 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 選択範囲算出 | `lstTgtUnit` の `X/Y` 最小最大から選択領域の矩形範囲を取得する。 |
+| 2 | インデックス変換 | 内部配列参照用に `startX/startY/endX/endY` を1ベースから0ベースへ変換する。 |
+| 3 | 左右端判定 | 左隣・右隣列を走査し、配列端到達または `null` Cabinet があれば該当辺を `true` とする。 |
+| 4 | 上下端判定 | 上隣・下隣行を走査し、配列端到達または `null` Cabinet があれば該当辺を `true` とする。 |
+| 5 | 結果返却 | 4方向の壁端判定結果を `out` 引数へ設定して返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象集合 | `lstTgtUnit` が空でなく、矩形選択に相当する座標集合であること | 最小最大算出不正または配列参照例外 |
+| 配置情報 | `allocInfo.lstUnits` がCabinet配置で初期化済みであること | 下位配列参照例外 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 左端が配列境界 | `leftEdge = true` とする。 |
+| 左隣列に `null` が存在 | 物理欠損端とみなし `leftEdge = true` とする。 |
+| 右端/上端/下端も同様 | 各辺で境界到達または `null` 検出時に該当 `*Edge = true` とする。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `allocInfo.lstUnits` | 隣接Cabinet存在判定 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 範囲外入力 | 下位配列参照例外 | 呼出元へ再送出 | 壁端判定中断 |
+| 欠損Cabinet検出 | `null` 判定 | 例外なし | 当該辺を壁端扱い |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as storeGapCp/outputArea
+    participant M as checkWallEdge
+    participant ALLOC as allocInfo.lstUnits
+
+    CALLER->>M: checkWallEdge(lstTgtUnit, out ...)
+    M->>M: startX/startY/endX/endY 算出
+    M->>M: 1ベース -> 0ベース変換
+    M->>ALLOC: 左右隣列を走査
+    M->>ALLOC: 上下隣行を走査
+    M-->>CALLER: top/bottom/left/right
+```
+
+#### 8-4-17. outputGapCamTargetArea_EdgeExpand
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private void outputGapCamTargetArea_EdgeExpand(List<UnitInfo> lstTgtUnit, ExpandType type, bool white = false)` |
+| 概要 | 対象Cabinet領域を上下左右へ拡張判定し、Controller別ウィンドウ信号を出力する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | lstTgtUnit | List<UnitInfo> | Y | パターン表示対象のCabinet集合 |
+| 2 | type | ExpandType | Y | Top/Right/Both の拡張種別 |
+| 3 | white | bool | N | 白表示で出力するかどうか |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 対象領域集約 | `lstTgtUnit` からController単位の `WindowSigInfo` を作成する。 |
+| 2 | 外周隣接判定 | 上下左右それぞれで隣接Cabinetの有無を判定し、拡張可否フラグ（`m_Expand*`）を更新する。 |
+| 3 | 拡張領域反映 | 拡張可能な辺について隣接Cabinet側のウィンドウ矩形を取り込み、必要時は半タイルフラグを更新する。 |
+| 4 | タイル数更新 | `type` に応じて `m_topTileNumX/Y` または `m_rightTileNumX/Y` を再計算する。 |
+| 5 | 信号出力 | `outputIntSigWindowByController`（通常）またはデバッグ描画（`NO_CONTROLLER`/`TempFile`）で表示を反映する。 |
+| 6 | 対象Controller設定 | 対象に含まれたControllerの `Target=true` を設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 対象集合 | `lstTgtUnit` が矩形選択として整列していること | 隣接計算不整合または表示範囲不正 |
+| 配置情報 | `allocInfo.lstUnits`、`cabiDx/cabiDy`、`modDx/modDy` が設定済みであること | 範囲計算またはタイル数更新で異常 |
+| 通信環境 | `NO_CONTROLLER` 無効時はController出力が可能であること | SDCP出力例外 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_ExpandTop/Bottom/Left/Right` | 外周拡張有無 | 手順2 |
+| `m_bottomHalfTile` / `m_rightHalfTile` | 半タイル撮影要否 | 手順3 |
+| `m_topTileNumX/Y` / `m_rightTileNumX/Y` | 解析用タイル数 | 手順4 |
+| `Controller.Target` | Reconfig対象フラグ | 手順6 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| `type == ExpandType.Top` | 上下方向中心の拡張とTopタイル数更新を行う。 |
+| `type == ExpandType.Right` | 左右方向中心の拡張とRightタイル数更新を行う。 |
+| `type == ExpandType.Both` | 上下左右すべての拡張判定を行う。 |
+| `NO_CONTROLLER` | 実出力を行わず、デバッグ描画や内部状態更新のみ実施する。 |
+| `white == true` | 白信号レベルでウィンドウ出力する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `allocInfo.lstUnits` | 隣接Cabinet探索 | 同期 |
+| `outputIntSigFlat` | 前回表示クリア | 同期 |
+| `outputIntSigWindowByController` | Controller別ウィンドウ出力 | 同期 |
+| `dicController` | 出力先Controller解決 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 対象外参照 | 隣接探索時のnull判定 | 例外なし | 当該辺の拡張を行わない |
+| SDCP出力失敗 | 下位 `Exception` | 呼出元へ再送出 | 位置合わせ処理側で失敗通知 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as SetCamPosTarget/measure
+    participant M as outputGapCamTargetArea_EdgeExpand
+    participant ALLOC as allocInfo.lstUnits
+    participant CTRL as Controllers
+
+    CALLER->>M: outputGapCamTargetArea_EdgeExpand(lstTgtUnit, type)
+    M->>M: Controller別WindowSigInfo生成
+    M->>ALLOC: 隣接Cabinet探索
+    M->>M: 拡張フラグ/半タイル/タイル数更新
+    alt NO_CONTROLLER無効
+        M->>CTRL: outputIntSigFlat / outputIntSigWindowByController
+    end
+    M->>CTRL: Target=true 更新
+    M-->>CALLER: 完了
+```
+
+#### 8-4-18. calcArea
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `private double calcArea(CvBlobs blobs)` |
+| 概要 | トリミング領域ブロブ群から代表面積を算出し、面積フィルタ基準値を返す |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | blobs | CvBlobs | Y | 2値化後に抽出された連結領域群 |
+
+返り値: 代表面積（double）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 面積フィルタ | `blobs.FilterByArea(GapTrimmingAreaMin, TrimmingAreaMax)` を適用する。 |
+| 2 | 件数判定 | 有効ブロブが0件の場合は `0` を返す。 |
+| 3 | 面積収集/整列 | 各ブロブ面積を配列化し昇順ソートする。 |
+| 4 | 中央上位帯平均 | `55%`〜`80%` 区間の面積平均を算出し代表値とする。 |
+| 5 | 値返却 | `Coverity` 分岐では0除算を回避し、代表面積を返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| ブロブ群 | `blobs` が初期化済みであること | 下位例外または面積0 |
+| 面積閾値 | `GapTrimmingAreaMin` と `TrimmingAreaMax` が妥当であること | フィルタ結果が空となり0返却 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| フィルタ後 `blobs.Count < 1` | `0` を返して終了する。 |
+| `Coverity` | `count > 0` を確認して0除算を回避する。 |
+| フィルタ後に十分な候補あり | 中央上位帯平均を代表面積として返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `CvBlobs.FilterByArea` | 外れ値ブロブ除去 | 同期 |
+| `List<double>.Sort` | 面積の昇順整列 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 面積候補不足 | `count == 0` 判定 | 例外なし | `0` を返却 |
+| ブロブ入力不正 | 下位例外 | 呼出元へ再送出 | 呼出元で抽出処理中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as calcMoireCheckArea/getTrimmingAreaGap
+    participant M as calcArea
+    participant B as CvBlobs
+
+    CALLER->>M: calcArea(blobs)
+    M->>B: FilterByArea(min, max)
+    alt count < 1
+        M-->>CALLER: 0
+    else 候補あり
+        M->>M: 面積配列化・ソート
+        M->>M: 55%-80%帯の平均算出
+        M-->>CALLER: area
+    end
+```
+
+### 8-5. 連携モジュールメソッド
+
+#### 8-5-1. Set3DPoints
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void Set3DPoints(int pos, float X, float Y, float Z)` |
+| 概要 | 投影対象となる3D座標を同次座標系の4点配列へ設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | pos | int | Y | 設定対象点のインデックス（0-3） |
+| 2 | X | float | Y | 3D点のX座標 |
+| 3 | Y | float | Y | 3D点のY座標 |
+| 4 | Z | float | Y | 3D点のZ座標 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 対象点選択 | `m_Mat3DPoints[pos]` を設定対象として選択する。 |
+| 2 | 座標格納 | 行0-2へ `X/Y/Z` を設定する。 |
+| 3 | 同次座標化 | 行3へ `1.0f` を設定し、4x1同次座標ベクトルとして保持する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 点インデックス | `pos` が 0-3 の範囲内であること | 配列参照例外 |
+| 座標値 | `X/Y/Z` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 指定インデックスの4x1行列へ固定位置で代入する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat.Set` | 3D点成分の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| `pos` 範囲外 | 下位配列参照例外 | 呼出元へ再送出 | 当該点設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: Set3DPoints(pos, X, Y, Z)
+    T->>T: m_Mat3DPoints[pos][0..2] = X,Y,Z
+    T->>T: m_Mat3DPoints[pos][3] = 1.0
+    T-->>CALLER: 完了
+```
+
+#### 8-5-2. SetTranslation
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void SetTranslation(float X, float Y, float Z)` |
+| 概要 | 3D点へ適用する並進行列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | X | float | Y | 並進X量 |
+| 2 | Y | float | Y | 並進Y量 |
+| 3 | Z | float | Y | 並進Z量 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 単位行列化 | `m_MatTranslation` を4x4単位行列形に設定する。 |
+| 2 | 並進成分設定 | 第4列へ `X/Y/Z` を格納する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 並進量 | `X/Y/Z` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常に4x4並進行列を再構築する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat.Set` | 並進行列要素の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列代入失敗 | 下位例外 | 呼出元へ再送出 | 行列設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: SetTranslation(X, Y, Z)
+    T->>T: 4x4単位行列を設定
+    T->>T: 第4列へX,Y,Zを設定
+    T-->>CALLER: 完了
+```
+
+#### 8-5-3. SetRx
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void SetRx(double degrees)` |
+| 概要 | X軸回転行列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | degrees | double | Y | X軸回転角度（度） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 角度変換 | `degrees / 180 * PI` でラジアン換算する。 |
+| 2 | 行列構築 | `cos/sin` を用いて `m_MatRx` の回転成分を設定する。 |
+| 3 | 同次成分設定 | 最終行・列を同次変換用値へ設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 角度 | `degrees` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常にX軸回転行列を再計算する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Math.Cos` / `Math.Sin` | 回転成分算出 | 同期 |
+| `Mat.Set` | 回転行列要素の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列代入失敗 | 下位例外 | 呼出元へ再送出 | 行列設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: SetRx(degrees)
+    T->>T: cos/sin 計算
+    T->>T: m_MatRx を設定
+    T-->>CALLER: 完了
+```
+
+#### 8-5-4. SetRy
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void SetRy(double degrees)` |
+| 概要 | Y軸回転行列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | degrees | double | Y | Y軸回転角度（度） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 角度変換 | `degrees / 180 * PI` でラジアン換算する。 |
+| 2 | 行列構築 | `cos/sin` を用いて `m_MatRy` の回転成分を設定する。 |
+| 3 | 同次成分設定 | 最終行・列を同次変換用値へ設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 角度 | `degrees` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常にY軸回転行列を再計算する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Math.Cos` / `Math.Sin` | 回転成分算出 | 同期 |
+| `Mat.Set` | 回転行列要素の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列代入失敗 | 下位例外 | 呼出元へ再送出 | 行列設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: SetRy(degrees)
+    T->>T: cos/sin 計算
+    T->>T: m_MatRy を設定
+    T-->>CALLER: 完了
+```
+
+#### 8-5-5. SetRz
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void SetRz(double degrees)` |
+| 概要 | Z軸回転行列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | degrees | double | Y | Z軸回転角度（度） |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 角度変換 | `degrees / 180 * PI` でラジアン換算する。 |
+| 2 | 行列構築 | `cos/sin` を用いて `m_MatRz` の回転成分を設定する。 |
+| 3 | 同次成分設定 | 最終行・列を同次変換用値へ設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 角度 | `degrees` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常にZ軸回転行列を再計算する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Math.Cos` / `Math.Sin` | 回転成分算出 | 同期 |
+| `Mat.Set` | 回転行列要素の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列代入失敗 | 下位例外 | 呼出元へ再送出 | 行列設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: SetRz(degrees)
+    T->>T: cos/sin 計算
+    T->>T: m_MatRz を設定
+    T-->>CALLER: 完了
+```
+
+#### 8-5-6. SetShiftToCameraCoordinate
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void SetShiftToCameraCoordinate(float X, float Y, float Z)` |
+| 概要 | ワールド座標からカメラ座標へのシフト量を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | X | float | Y | カメラ座標系へのXシフト量 |
+| 2 | Y | float | Y | カメラ座標系へのYシフト量 |
+| 3 | Z | float | Y | カメラ座標系へのZシフト量 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | シフト量設定 | `m_MatShiftToCameraCoordinate` の各成分へ `X/Y/Z` を設定する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| シフト量 | `X/Y/Z` が計算可能な実数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常に3x1シフトベクトルを上書きする。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat.Set` | シフトベクトル要素の代入 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列代入失敗 | 下位例外 | 呼出元へ再送出 | 設定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: SetShiftToCameraCoordinate(X, Y, Z)
+    T->>T: シフトベクトル設定
+    T-->>CALLER: 完了
+```
+
+#### 8-5-7. CameraParam.Set
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void Set(double f, double SensorSizeH, double SensorSizeV, int SensorPxH, int SensorPxV)` |
+| 概要 | 投影計算で使用するカメラ内部パラメータを更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | f | double | Y | 焦点距離 |
+| 2 | SensorSizeH | double | Y | センサ横幅 |
+| 3 | SensorSizeV | double | Y | センサ縦幅 |
+| 4 | SensorPxH | int | Y | センサ横画素数 |
+| 5 | SensorPxV | int | Y | センサ縦画素数 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 焦点距離設定 | `m_f` を更新する。 |
+| 2 | センササイズ設定 | `m_SensorSizeH`、`m_SensorSizeV` を更新する。 |
+| 3 | センサ画素数設定 | `m_SensorPxH`、`m_SensorPxV` を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 光学パラメータ | `f`、センササイズが正値であること | 後続投影結果が不正 |
+| 画素数 | `SensorPxH/V` が正整数であること | 後続投影結果が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 受領した値で内部パラメータを単純更新する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 内部メンバ更新のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 想定外値入力 | 明示チェックなし | 例外なし | 後続投影結果へ影響 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant C as CameraParam
+
+    CALLER->>C: Set(f, sizeH, sizeV, pxH, pxV)
+    C->>C: 内部カメラパラメータ更新
+    C-->>CALLER: 完了
+```
+
+#### 8-5-8. Calc
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void Calc()` |
+| 概要 | 登録済み3D点へ並進・回転・カメラ座標シフトを適用し、2D投影点と移動後3D点を算出する |
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 4点ループ開始 | `n=0..3` の各3D点について投影処理を実行する。 |
+| 2 | 並進・回転適用 | `m_MatTranslation * m_Mat3DPoints[n]` の後、`Rz * (Ry * (Rx * ...))` を適用する。 |
+| 3 | カメラ座標変換 | 4次元結果を3次元へ落とし、`m_MatShiftToCameraCoordinate` を加算する。 |
+| 4 | 2D投影算出 | カメラパラメータを用いて `m_ImagePoints[n]` の `X/Y` を算出する。 |
+| 5 | 移動後3D点保持 | `m_MatMoved3DPoints[n]` へ変換後 `X/Y/Z` を格納する。 |
+| 6 | 一時Mat解放 | ループ内の一時 `Mat` を `Dispose` する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 入力点 | 4点すべてに `Set3DPoints` 済みであること | 投影結果が未定義 |
+| 変換行列 | `SetTranslation`、`SetRx/Ry/Rz`、`SetShiftToCameraCoordinate` 済みであること | 投影結果が不正 |
+| カメラパラメータ | `CameraParameter.Set` で実機相当値が設定済みであること | 2D投影点が不正 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_ImagePoints` | 投影後2D座標4点 | 手順4 |
+| `m_MatMoved3DPoints` | カメラ座標系の3D点 | 手順5 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 4点すべてへ同一の行列変換と投影計算を適用する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat` の乗算 | 並進・回転変換 | 同期 |
+| `Point2f` | 投影後2D座標の保持 | 同期 |
+| `Dispose` | 一時行列解放 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 行列演算失敗 | 下位例外 | 呼出元へ再送出 | 当該投影計算中断 |
+| Z成分不正 | 明示チェックなし | 例外なし | 投影座標が不正値化する可能性 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: Calc()
+    loop 4 points
+        T->>T: 並進行列適用
+        T->>T: Rz * Ry * Rx 回転適用
+        T->>T: カメラ座標系へシフト
+        T->>T: 2D投影点を算出
+        T->>T: 移動後3D点を保持
+    end
+    T-->>CALLER: ImagePoints / Moved3DPoints 更新完了
+```
+
+#### 8-5-9. GetMoved3DPoints
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void GetMoved3DPoints(int pos, out float X, out float Y, out float Z)` |
+| 概要 | `Calc()` で更新済みの移動後3D点を取得する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | pos | int | Y | 取得対象点のインデックス（0-3） |
+| 2 | X(out) | float | Y | 取得後X座標 |
+| 3 | Y(out) | float | Y | 取得後Y座標 |
+| 4 | Z(out) | float | Y | 取得後Z座標 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 初期化 | `X=Y=Z=0` を設定する。 |
+| 2 | 対象点読出し | `m_MatMoved3DPoints[pos]` の各要素を取得する。 |
+| 3 | out返却 | 読み出した `X/Y/Z` を `out` 引数へ返す。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 点インデックス | `pos` が 0-3 の範囲内であること | 配列参照例外 |
+| 事前計算 | `Calc()` 実行済みであること | 初期値または古い値を返す可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 指定点の3成分をそのまま返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Mat.At<float>` | 移動後3D点成分の読出し | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| `pos` 範囲外 | 下位配列参照例外 | 呼出元へ再送出 | 取得中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: GetMoved3DPoints(pos, out X, out Y, out Z)
+    T->>T: m_MatMoved3DPoints[pos] 読出し
+    T-->>CALLER: X, Y, Z
+```
+
+#### 8-5-10. ImagePoints
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public Point2f[] ImagePoints { get; }` |
+| 概要 | `Calc()` または `Calc2()` で算出した4点分の2D投影座標を返す参照プロパティ |
+
+引数: なし
+
+返り値
+
+| 項目 | 型 | 説明 |
+|------|----|------|
+| ImagePoints | Point2f[] | 左上、右上、右下、左下の順で保持された投影後2D座標配列 |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 内部配列参照返却 | `m_ImagePoints` の参照をそのまま返す。 |
+| 2 | 呼出元利用 | GapCamera 側では目標枠設定、辺長算出、CSV出力、撮像範囲判定に利用する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 事前計算 | `Calc()` または `Calc2()` 実行後であること | 未初期化要素または古い値を参照する可能性 |
+| 配列前提 | 4点分の投影結果を扱うこと | 添字前提の呼出元処理が破綻する |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常に内部配列の参照を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 内部配列参照返却のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 明示例外なし | 該当なし | なし | 呼出元が返却値を評価 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant T as TransformImage
+
+    CALLER->>T: ImagePoints
+    T-->>CALLER: m_ImagePoints 参照
+    CALLER->>CALLER: 角点参照 / 距離計算 / CSV出力
+```
+
+### 8-6. EstimateCameraPos連携メンバ
+
+#### 8-6-1. CameraParameter.Set
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void Set(double f, double SensorSizeH, double SensorSizeV, int SensorPxH, int SensorPxV)` |
+| 概要 | 姿勢推定で使用する内部カメラパラメータを更新する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | f | double | Y | 焦点距離 |
+| 2 | SensorSizeH | double | Y | センサ横幅 |
+| 3 | SensorSizeV | double | Y | センサ縦幅 |
+| 4 | SensorPxH | int | Y | センサ横画素数 |
+| 5 | SensorPxV | int | Y | センサ縦画素数 |
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 焦点距離設定 | `m_f` を更新する。 |
+| 2 | センササイズ設定 | `m_SensorSizeH`、`m_SensorSizeV` を更新する。 |
+| 3 | 画素数設定 | `m_SensorPxH`、`m_SensorPxV` を更新する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 光学パラメータ | `f`、センササイズが正値であること | `Estimate()` 結果が不正 |
+| 画素数 | `SensorPxH/V` が正整数であること | カメラ行列が不正 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 受領値で内部パラメータを単純更新する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 内部メンバ更新のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 想定外値入力 | 明示チェックなし | 例外なし | 後続 `Estimate()` の結果へ影響 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant C as EstimateCameraPos.CameraParam
+
+    CALLER->>C: Set(f, sizeH, sizeV, pxH, pxV)
+    C->>C: 内部カメラパラメータ更新
+    C-->>CALLER: 完了
+```
+
+#### 8-6-2. ImagePoints
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public Point2f[] ImagePoints { set; }` |
+| 概要 | SolvePnP 入力となる画像上2D点列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | value | Point2f[] | Y | 検出済み画像座標列 |
+
+返り値: なし（set アクセサ）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 配列保持 | 入力配列参照を `m_ImagePoints` に保持する。 |
+| 2 | 後続推定連携 | `Estimate()` で `Mat` 化して SolvePnP へ渡される。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 点数整合 | `ObjectPoints` と同数であること | SolvePnP が失敗する可能性 |
+| 座標品質 | 誤検出が少ない2D座標列であること | 推定姿勢が不安定 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 受け取った配列参照を上書き保持する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | メンバ参照代入のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| null 設定 | 明示チェックなし | 例外なし | 後続 `Estimate()` で失敗する可能性 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant E as EstimateCameraPos
+
+    CALLER->>E: ImagePoints = imagePoints
+    E->>E: m_ImagePoints 更新
+    E-->>CALLER: 完了
+```
+
+#### 8-6-3. ObjectPoints
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public Point3f[] ObjectPoints { set; }` |
+| 概要 | SolvePnP 入力となるワールド座標系3D点列を設定する |
+
+引数
+
+| No. | 引数名 | 型 | 必須 | 説明 |
+|-----|--------|----|------|------|
+| 1 | value | Point3f[] | Y | 対応する3D座標列 |
+
+返り値: なし（set アクセサ）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 配列保持 | 入力配列参照を `m_ObjectPoints` に保持する。 |
+| 2 | 後続推定連携 | `Estimate()` で `Mat` 化して SolvePnP へ渡される。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 点数整合 | `ImagePoints` と同数であること | SolvePnP が失敗する可能性 |
+| 座標系整合 | 2D点列と同じ対応順であること | 推定姿勢が誤る |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 受け取った配列参照を上書き保持する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | メンバ参照代入のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| null 設定 | 明示チェックなし | 例外なし | 後続 `Estimate()` で失敗する可能性 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant E as EstimateCameraPos
+
+    CALLER->>E: ObjectPoints = objectPoints
+    E->>E: m_ObjectPoints 更新
+    E-->>CALLER: 完了
+```
+
+#### 8-6-4. Estimate
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public void Estimate()` |
+| 概要 | 2D/3D対応点とカメラパラメータから SolvePnP で回転・並進を推定する |
+
+引数: なし
+
+返り値: なし（void）
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 入力 `Mat` 構築 | 歪係数、回転ベクトル、並進ベクトル、2D/3D点 `Mat` を using で生成する。 |
+| 2 | カメラ行列生成 | 焦点距離とセンサ寸法から `CAMERA_MATRIX` を構築する。 |
+| 3 | PnP解法実行 | `Cv2.SolvePnP(..., SolvePnPFlags.Iterative)` で姿勢を推定する。 |
+| 4 | 回転角変換 | `rvec` を `Marshal.Copy` で `m_Rot` に取り込み、ラジアンから度へ変換する。 |
+| 5 | 並進取得 | `Cv2.Rodrigues` で回転行列化し、逆行列と `tvec` から `m_Trans` を算出する。 |
+| 6 | 後始末 | 生成した `Mat` を `Dispose` または using により解放する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 2D点列 | `ImagePoints` 設定済みで、十分な対応点数があること | SolvePnP 失敗 |
+| 3D点列 | `ObjectPoints` 設定済みで、2D点と順序整合すること | 推定結果が不正 |
+| カメラ条件 | `CameraParameter.Set` 済みであること | カメラ行列が不正 |
+
+主要状態更新
+
+| 状態変数 | 更新内容 | 更新タイミング |
+|----------|----------|----------------|
+| `m_Rot` | 推定回転角（度）3要素 | 手順4 |
+| `m_Trans` | 推定並進量3要素 | 手順5 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 解法選択 | 常に `SolvePnPFlags.Iterative` を使用する。 |
+| 失敗時分岐 | 明示的な戻り値判定は行わず、下位例外または結果値に依存する。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| `Cv2.SolvePnP` | 姿勢推定本体 | 同期 |
+| `Cv2.Rodrigues` | 回転ベクトルから回転行列へ変換 | 同期 |
+| `Marshal.Copy` | `Mat` から配列へ値転送 | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| SolvePnP 失敗 | 下位例外または不正値 | 呼出元へ再送出または結果値反映 | using により一時リソース解放 |
+| 入力未設定 | 下位 `Mat` 生成/呼出し例外 | 呼出元へ再送出 | 推定中断 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant E as EstimateCameraPos
+    participant CV as OpenCV
+
+    CALLER->>E: Estimate()
+    E->>E: CAMERA_MATRIX 構築
+    E->>CV: SolvePnP(imagePoints, objectPoints, ...)
+    CV-->>E: rvec, tvec
+    E->>CV: Rodrigues(rvec)
+    CV-->>E: 回転行列
+    E->>E: Rot / Trans 更新
+    E-->>CALLER: 推定完了
+```
+
+#### 8-6-5. Rot
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public double[] Rot { get; }` |
+| 概要 | `Estimate()` で算出した回転角配列を返す |
+
+引数: なし
+
+返り値
+
+| 項目 | 型 | 説明 |
+|------|----|------|
+| Rot | double[] | X/Y/Z 軸回りの回転角（度） |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 内部配列参照返却 | `m_Rot` の参照をそのまま返す。 |
+| 2 | 呼出元利用 | GapCamera 側で Pan/Tilt/Roll 算出に利用する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 事前推定 | `Estimate()` 実行済みであること | `null` または古い値参照の可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常に内部配列参照を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 内部配列参照返却のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 明示例外なし | 該当なし | なし | 呼出元が返却値を評価 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant E as EstimateCameraPos
+
+    CALLER->>E: Rot
+    E-->>CALLER: m_Rot 参照
+```
+
+#### 8-6-6. Trans
+
+| 項目 | 内容 |
+|------|------|
+| シグネチャ | `public double[] Trans { get; }` |
+| 概要 | `Estimate()` で算出した並進量配列を返す |
+
+引数: なし
+
+返り値
+
+| 項目 | 型 | 説明 |
+|------|----|------|
+| Trans | double[] | X/Y/Z 方向の推定並進量 |
+
+処理概要（詳細）
+
+| 手順No. | 処理内容 | 詳細 |
+|---------|----------|------|
+| 1 | 内部配列参照返却 | `m_Trans` の参照をそのまま返す。 |
+| 2 | 呼出元利用 | GapCamera 側で Tx/Ty/Tz 算出に利用する。 |
+
+入力条件・前提条件
+
+| 区分 | 条件 | NG時挙動 |
+|------|------|----------|
+| 事前推定 | `Estimate()` 実行済みであること | `null` または古い値参照の可能性 |
+
+条件分岐仕様
+
+| 条件 | 挙動 |
+|------|------|
+| 条件分岐なし | 常に内部配列参照を返す。 |
+
+主要呼出し先
+
+| 呼出し先 | 役割 | 同期/非同期 |
+|----------|------|--------------|
+| なし | 内部配列参照返却のみ | 同期 |
+
+例外時仕様
+
+| ケース | 捕捉方法 | 通知/伝播 | 後処理 |
+|--------|----------|-----------|--------|
+| 明示例外なし | 該当なし | なし | 呼出元が返却値を評価 |
+
+シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CALLER as GapCamera
+    participant E as EstimateCameraPos
+
+    CALLER->>E: Trans
+    E-->>CALLER: m_Trans 参照
+```
+
+### 8-7. 相互参照メソッド
+
+本節の対象メソッドは、GapCamera 側では呼出し・連携責務のみを持ち、実装詳細の正本は
+`docs/UfCamera_詳細設計書.md` とする。
+
+#### 8-7-1. 参照方針
+
+| 項目 | 内容 |
+|------|------|
+| 目的 | GapCamera/UfCamera 間で重複記載を避け、カメラ制御・読込系メソッドの詳細仕様を UfCamera 側へ集約する。 |
+| GapCamera記載範囲 | 呼出し契機、主要呼出し先、失敗時リカバリ（再接続・再試行）までを記載する。 |
+| 詳細記載先 | `docs/UfCamera_詳細設計書.md`（第4章・第8章） |
+
+#### 8-7-2. 参照対象メソッド一覧
+
+| No. | メソッド名 | GapCameraでの主な利用場面 | 参照先（UfCamera_詳細設計書） |
+|-----|-----------|--------------------------|------------------------------|
+| 1 | StartCameraController | 撮影前の制御プロセス起動保証 | 第4章 `4-2. MDL-UF-002: UfCameraConnectionService`、第8章 `8-1. UIイベント・位置合わせ系メソッド` |
+| 2 | ConnectCamera | 撮影前接続・待機失敗時の再接続 | 第4章 `4-2. MDL-UF-002: UfCameraConnectionService`、`8-1-2. btnUfCamConnect_Click` |
+| 3 | DisconnectCamera | 再接続時の既存接続解除 | 第4章 `4-2. MDL-UF-002: UfCameraConnectionService`、`8-1-3. btnUfCamDisconnect_Click` |
+| 4 | Wait4Capturing | シャッタ実行後の撮影完了待機 | 第4章 `4-4. MDL-UF-004: UfMeasurementEngine`、`8-2-4. CaptureUfImages` |
+| 5 | loadArwFile | ARW読込（撮影結果のMat化前処理） | 第4章 `4-6. MDL-UF-006: UfResultLoadService`、第8章 `8-2. U/F計測系メソッド` |
+| 6 | SetCabinetPos | Cabinet空間座標の初期設定 | `8-3-1. SetCabinetPos` |
+| 7 | MoveCabinetPos | 姿勢推定後のCabinet座標補正 | 第4章 `4-5. MDL-UF-005: UfAdjustmentEngine`、第8章 `8-4. U/F調整系メソッド` |
+| 8 | searchUnit | 座標に対するUnit解決 | 第4章 `4-3. MDL-UF-003: UfCameraPositioning`、第8章 `8-3. 位置・基準Cabinet算出系メソッド` |
+| 9 | CameraDataClass.LoadFromXmlFile | カメラ制御設定XML・補正XMLの読込 | 第4章 `4-6. MDL-UF-006: UfResultLoadService`、第8章 `8-2. U/F計測系メソッド` |
+| 10 | CameraDataClass.SaveToXmlFile | カメラ制御設定XML・補正XMLの保存 | 第4章 `4-6. MDL-UF-006: UfResultLoadService`、第8章 `8-2. U/F計測系メソッド` |
+
+#### 8-7-3. メソッド別記載（参照定義）
+
+##### 8-7-3-1. StartCameraController
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 呼出しタイミングのみ本書管理（撮影前起動保証）。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-2. ConnectCamera
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 接続要求と再接続リカバリ契機を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-3. DisconnectCamera
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 再接続前の切断契機を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-4. Wait4Capturing
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 撮影待機の呼出し条件・再試行条件を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-5. loadArwFile
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 読込失敗時の再試行/中断条件を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-6. SetCabinetPos
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 呼出し元業務フローと引数値（距離等）を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` の `8-3-1. SetCabinetPos` を参照。 |
+
+##### 8-7-3-7. MoveCabinetPos
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 姿勢推定結果反映の呼出し順と補正意図を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-8. searchUnit
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | 座標→Unit 紐付けの利用箇所を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-9. CameraDataClass.LoadFromXmlFile
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | XML読込の呼出し契機と失敗時の再試行/中断条件を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
+##### 8-7-3-10. CameraDataClass.SaveToXmlFile
+
+| 項目 | 内容 |
+|------|------|
+| GapCameraでの扱い | XML保存の呼出し契機と失敗時の戻り方針を本書管理。 |
+| 詳細仕様 | `docs/UfCamera_詳細設計書.md` を参照。 |
+
 ## 9. 変更履歴
 
 | 版数 | 日付 | 変更者 | 変更内容 |
@@ -4345,6 +6351,16 @@ sequenceDiagram
 | 1.8 | 2026/04/17 | システム分析チーム | 8-4-8 `calcGapGain(List<UnitInfo>, string)` を再詳細化（引数表・分岐・出力/復号フローを実装準拠で補強） |
 | 1.9 | 2026/04/17 | システム分析チーム | `SetCamPosTarget` を追加（LED仕様判定・3D→2D変換・Z距離/はみ出しチェックフローを詳細化、現行構成では 8-1-5） |
 | 2.0 | 2026/04/17 | システム分析チーム | 8章の記載順を実装順に整理し、`SetCamPosTarget` を 8-4 から 8-1 へ移動、見出し番号を再採番 |
+| 2.1 | 2026/04/20 | システム分析チーム | 8章へ `AdjustCameraPosition`、`GetCameraPosition`、`setGapCellCorrectValue`、`setGapCellCorrectValueForXML`、`outputGapCamTargetArea_EdgeExpand`、`calcArea` を追加（主要呼出し先の未記載を解消） |
+| 2.2 | 2026/04/20 | システム分析チーム | 8章へ `SaveMatBinary`、`LoadMatBinary`、`checkFileSize`、`checkWallEdge` を追加し、8-4の補助メソッド順を依存順へ調整 |
+| 2.3 | 2026/04/20 | システム分析チーム | 8章全節を点検し、後追い追加した節の粒度を既存高粒度節に合わせて再統一（引数表・前提条件・条件分岐・シーケンス図を補完） |
+| 2.4 | 2026/04/20 | システム分析チーム | 8-5 を新設し、`TransformImage.cs` で GapCamera から利用しているメソッド群（座標設定、回転、投影、3D取得）を追加 |
+| 2.5 | 2026/04/20 | システム分析チーム | 8-5 へ `ImagePoints` を補記し、8-6 を新設して `EstimateCameraPos.cs` の実使用メンバ（入力点設定、推定実行、結果参照）を追加 |
+| 2.6 | 2026/04/20 | システム分析チーム | 8-7 を新設し、`StartCameraController`、`ConnectCamera`、`DisconnectCamera`、`Wait4Capturing`、`loadArwFile`、`SetCabinetPos`、`MoveCabinetPos`、`searchUnit` を UfCamera 詳細設計書参照へ整理 |
+| 2.7 | 2026/04/20 | システム分析チーム | 8-7 の UfCamera参照対象へ `CameraDataClass.LoadFromXmlFile`、`CameraDataClass.SaveToXmlFile` を追加 |
+| 2.8 | 2026/04/20 | システム分析チーム | 8章冒頭に章構成表を追加し、UfCamera詳細設計書と章立て・節建・粒度（8-1〜8-7）の対応関係を明示 |
+| 2.9 | 2026/04/20 | システム分析チーム | UfCamera詳細設計書と節名語彙を統一するため、8-1〜8-7 の見出し表現を共通化 |
+| 3.0 | 2026/04/20 | システム分析チーム | 8章冒頭の章構成表について「主な責務」欄の語彙をUfCamera詳細設計書と完全一致に統一 |
 
 ---
 
