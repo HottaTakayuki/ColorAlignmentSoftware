@@ -1,3 +1,27 @@
+﻿<!-- NiceDiffStart -->
+## 差分サマリ（モデル分類）
+
+| 区分 | 対象モデル |
+|------|------------|
+| 既存ファイル基準 | Chiron/Cancun |
+| ColorAlignmentSoftware_Nice基準 | Verona/Capri |
+
+### 参照ソース（Verona/Capri）
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\GapCamera.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\TransformImage.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\EstimateCameraPos.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\SDCPClass.cs
+
+### このファイルの差分要点
+- 連携メンバ差分: 定義差は小さいため、利用条件差(モデル/距離)を注記。
+- 参照差分: 呼出文脈は8-1/8-2と整合させる。
+
+### 更新時の注意
+- 既存記述を維持したまま、上記差分観点を各章の手順・IF・例外仕様へ反映する。
+- モデル表記は Chiron/Cancun と Verona/Capri を分離して記載する。
+<!-- NiceDiffEnd -->
+
+
 ### 8-6. EstimateCameraPos連携メンバ
 
 #### 8-6-1. CameraParameter.Set
@@ -378,3 +402,5 @@ sequenceDiagram
     CALLER->>E: Trans
     E-->>CALLER: m_Trans 参照
 ```
+
+

@@ -1,3 +1,27 @@
+﻿<!-- NiceDiffStart -->
+## 差分サマリ（モデル分類）
+
+| 区分 | 対象モデル |
+|------|------------|
+| 既存ファイル基準 | Chiron/Cancun |
+| ColorAlignmentSoftware_Nice基準 | Verona/Capri |
+
+### 参照ソース（Verona/Capri）
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\GapCamera.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\TransformImage.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\Functions\\EstimateCameraPos.cs
+- ..\\ColorAlignmentSoftware_Nice\\CAS\\SDCPClass.cs
+
+### このファイルの差分要点
+- 章全体差分: 8章(業務処理/書込み/補助演算)で差分が大きい。
+- 整理観点: Chiron/Cancun前提記述とVerona/Capri追加機能を章単位で分離。
+
+### 更新時の注意
+- 既存記述を維持したまま、上記差分観点を各章の手順・IF・例外仕様へ反映する。
+- モデル表記は Chiron/Cancun と Verona/Capri を分離して記載する。
+<!-- NiceDiffEnd -->
+
+
 # GapCamera 詳細設計書
 
 | 項目 | 内容 |
@@ -24,3 +48,5 @@
 - [8. メソッド仕様](GapCamera_詳細設計書/08_メソッド仕様.md)
 - [9. 変更履歴](GapCamera_詳細設計書/09_変更履歴.md)
 - [10. 記入ガイド（運用時に削除可）](GapCamera_詳細設計書/10_記入ガイド.md)
+
+

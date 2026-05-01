@@ -1,4 +1,4 @@
-# 基本設計書
+﻿# 基本設計書
 
 | 項目 | 内容 |
 |------|------|
@@ -26,7 +26,7 @@ UfCamera機能はCAS内のU/F調整処理機能であり、カメラ接続、対
 - 画像解析：OpenCvSharp
 - 補正値生成：MakeUFData
 - 設備制御：ControllerへのSDCPコマンド送信
-- 設定・永続化：Settings、CamCont.xml、XML、測定画像ファイル、調整ログ
+- 設定・永続化：Settings、CamCont.xml、XML、計測画像ファイル、調整ログ
 
 #### システム構成図
 
@@ -54,7 +54,7 @@ flowchart LR
 | OpenCvSharp | 外部ライブラリ | 画像切出し、Blob抽出、測定領域解析 | 計測・位置合わせで利用 |
 | MakeUFData | 外部ライブラリ | U/F補正値生成、FMT変換、統計計算 | Cabinet/9pt/Radiator/EachModule対応 |
 | Controller（SDCP） | 外部システム | ThroughMode、Layout制御、内蔵パターン、電源制御 | sendSdcpCommand |
-| Settings.Ins.Camera | 設定ストア | 撮影条件、待機時間、距離条件、測定レベル管理 | 機種別設定あり |
+| Settings.Ins.Camera | 設定ストア | 撮影条件、待機時間、距離条件、計測レベル管理 | 機種別設定あり |
 | UfMeasResult.xml | ファイル | U/F計測結果保存 | UfCamMeasLog |
 | UnitCpInfo.xml | ファイル | U/F調整結果保存 | UfCamAdjLog |
 
@@ -117,9 +117,9 @@ flowchart TD
 |--------------------|--------|--------|----------|--------|--------|------|
 | CAS UfCamera | UF-F01 | カメラ接続・初期化 | カメラとレンズ選択状態を反映し、U/F・Gapの関連UIを初期化する | オペレータ | 高 | btnUfCamConnect_Click, btnUfCamDisconnect_Click |
 | CAS UfCamera | UF-F02 | カメラ位置合わせ | 対象Cabinetの妥当性確認後、ライブ画像を用いてカメラ位置合わせを支援する | オペレータ | 高 | tbtnUfCamSetPos_Click, timerUfCam_Tick |
-| CAS UfCamera | UF-F03 | U/F計測 | 対象Cabinetを撮影・解析し、Cabinet/Module単位の測定結果を生成する | オペレータ | 高 | btnUfCamMeasStart_Click, MeasureUfAsync |
+| CAS UfCamera | UF-F03 | U/F計測 | 対象Cabinetを撮影・解析し、Cabinet/Module単位の計測結果を生成する | オペレータ | 高 | btnUfCamMeasStart_Click, MeasureUfAsync |
 | CAS UfCamera | UF-F04 | U/F調整 | 計測結果、目標Cabinet、調整方式、視聴点条件に基づき調整データを生成・反映する | オペレータ | 高 | btnUfCamAdjustStart_Click, AdjustUfCamAsync |
-| CAS UfCamera | UF-F05 | 測定結果読込 | 保存済み計測結果XMLを読込み、結果画面に再表示する | オペレータ | 中 | btnUfCamResultOpen_Click |
+| CAS UfCamera | UF-F05 | 計測結果読込 | 保存済み計測結果XMLを読込み、結果画面に再表示する | オペレータ | 中 | btnUfCamResultOpen_Click |
 
 ---
 
@@ -142,7 +142,7 @@ flowchart TD
     S4 --> S5{調整後再計測?}
     S5 -->|Yes| S6[UF-F03 U/F計測]
     S5 -->|No| S7[完了]
-    S8[UF-F05 測定結果読込]
+    S8[UF-F05 計測結果読込]
 ```
 
 #### 補足説明
@@ -459,7 +459,7 @@ flowchart TD
 |------|------|
 | 機能ID | UF-F03 |
 | 機能名 | U/F計測機能 |
-| 機能概要 | 対象Cabinetを撮影・解析し、Cabinet/Module単位のU/F測定結果を生成して保存する |
+| 機能概要 | 対象Cabinetを撮影・解析し、Cabinet/Module単位のU/F計測結果を生成して保存する |
 | 利用者 | オペレータ |
 | 起動契機 | 計測開始ボタン押下（btnUfCamMeasStart_Click） |
 | 入力 | 対象Cabinet、撮影距離、壁高さ、カメラ高さ、Target Only設定 |
@@ -511,7 +511,7 @@ flowchart LR
 | UF-I21 | 対象Cabinet選択 | 入力 | Cabinet配列 | - | 必須 | 前回状態 | 矩形チェック | CheckSelectedUnits |
 | UF-I22 | Target Only | 入力 | bool | - | 任意 | false | - | cbUfCamMeasTgtOnly |
 | UF-O21 | 進捗メッセージ | 表示 | string | - | - | 空 | - | winProgress.ShowMessage |
-| UF-O22 | 測定結果 | 表示 | text/grid | - | - | 空 | - | txbUfCamMeasResult |
+| UF-O22 | 計測結果 | 表示 | text/grid | - | - | 空 | - | txbUfCamMeasResult |
 
 ###### 画面アクション詳細
 
@@ -538,7 +538,7 @@ flowchart LR
 |--------|--------|----|------|------|------|
 | 1 | WallCamDistance | double | - | 必須 | 撮影距離 |
 | 2 | StartCamPos/EndCamPos | object | - | 必須 | 開始/終了カメラ位置 |
-| 3 | lstUfCamMeas | array | 可変 | 必須 | Cabinet/Module別測定結果 |
+| 3 | lstUfCamMeas | array | 可変 | 必須 | Cabinet/Module別計測結果 |
 
 ##### 2-2-3-5. 関連システムインタフェース仕様
 
@@ -595,8 +595,8 @@ flowchart LR
 |------|--------|------|----|------|------|------|
 | 入力 | 選択Cabinet群 | 計測対象 | List<UnitInfo> | - | 必須 | 矩形要件 |
 | 入力 | 撮影条件 | カメラ設定 | ShootCondition | - | 必須 | Settings参照 |
-| 出力 | 計測結果 | Cabinet/Module測定結果 | UfCamMeasLog | - | 必須 | XML保存 |
-| 出力 | 撮影画像 | Black/Mask/Module/Flat画像 | image files | - | 必須 | 測定フォルダ |
+| 出力 | 計測結果 | Cabinet/Module計測結果 | UfCamMeasLog | - | 必須 | XML保存 |
+| 出力 | 撮影画像 | Black/Mask/Module/Flat画像 | image files | - | 必須 | 計測フォルダ |
 
 ###### データ処理内容
 
@@ -789,19 +789,19 @@ flowchart LR
 
 ---
 
-#### 2-2-5. 機能名：測定結果読込機能
+#### 2-2-5. 機能名：計測結果読込機能
 
 ##### 2-2-5-1. 機能概要
 
 | 項目 | 内容 |
 |------|------|
 | 機能ID | UF-F05 |
-| 機能名 | 測定結果読込機能 |
+| 機能名 | 計測結果読込機能 |
 | 機能概要 | 保存済みのU/F計測結果XMLを読込み、結果表示へ再展開する |
 | 利用者 | オペレータ |
 | 起動契機 | 結果読込ボタン押下（btnUfCamResultOpen_Click） |
 | 入力 | UfMeasResult.xml |
-| 出力 | 画面上の測定結果表示 |
+| 出力 | 画面上の計測結果表示 |
 | 関連機能 | UF-F03 |
 | 前提条件 | 読込対象XMLが存在し、フォーマットが正しいこと |
 | 事後条件 | 計測結果表示が更新される |
@@ -845,7 +845,7 @@ flowchart LR
 | 項目ID | 項目名 | 区分（入力/表示） | 型 | 桁数 | 必須 | 初期値 | バリデーション | 備考 |
 |--------|--------|-------------------|----|------|------|--------|----------------|------|
 | UF-I41 | XMLファイルパス | 入力 | string | - | 必須 | 測定Dir | 存在/拡張子 | OpenFileDialog |
-| UF-O41 | 測定結果表示 | 表示 | text/grid | - | - | 既存状態 | - | dispUfMeasResult |
+| UF-O41 | 計測結果表示 | 表示 | text/grid | - | - | 既存状態 | - | dispUfMeasResult |
 
 ###### 画面アクション詳細
 
@@ -899,7 +899,7 @@ flowchart LR
 
 | 項目 | 内容 |
 |------|------|
-| 処理名 | U/F測定結果読込処理 |
+| 処理名 | U/F計測結果読込処理 |
 | 処理種別 | オンライン |
 | 処理概要 | XMLから計測結果を読込み画面へ反映 |
 | 実行契機 | 結果読込ボタン |
@@ -936,9 +936,9 @@ flowchart LR
 
 | データ名 | 概要 | 保持期間 | 更新主体 | 備考 |
 |----------|------|----------|----------|------|
-| U/F計測結果XML | U/F測定結果の保存 | 運用保管期間 | 計測処理 | UfMeasResult.xml |
+| U/F計測結果XML | U/F計測結果の保存 | 運用保管期間 | 計測処理 | UfMeasResult.xml |
 | U/F調整結果XML | U/F補正点情報の保存 | 運用保管期間 | 調整処理 | UnitCpInfo.xml |
-| 測定画像ファイル | Black、Mask、Module、Flat画像 | 測定フォルダ世代管理 | 計測処理 | RAW/JPEG |
+| 計測画像ファイル | Black、Mask、Module、Flat画像 | 計測フォルダ世代管理 | 計測処理 | RAW/JPEG |
 | 実行ログ | 処理履歴・進捗ログ | 世代管理ポリシーに従う | U/F計測・調整処理 | saveUfLog |
 | CamCont.xml | AlphaCameraController連携設定 | 実行時更新 | カメラ制御処理 | 一時更新 |
 
@@ -960,7 +960,7 @@ flowchart LR
 |--------|--------|------------|--------|------|--------|--------|
 | UF-F03 | U/F計測 | ファイル(XML/画像) | ○ | - | ○ | - |
 | UF-F04 | U/F調整 | ファイル(XML/ログ) | ○ | ○ | ○ | - |
-| UF-F05 | 測定結果読込 | ファイル(XML) | - | ○ | - | - |
+| UF-F05 | 計測結果読込 | ファイル(XML) | - | ○ | - | - |
 
 ---
 
@@ -1009,15 +1009,15 @@ flowchart LR
 | UF-F02 | カメラ位置合わせ | CAS/Functions/UfCamera.cs | タイマ駆動のライブ更新と設備設定を統合するため | timerUfCam |
 | UF-F03 | U/F計測 | CAS/Functions/UfCamera.cs | 撮影、解析、XML保存、結果表示を統合するため | MeasureUfAsync |
 | UF-F04 | U/F調整 | CAS/Functions/UfCamera.cs | 方式別調整制御とMakeUFData連携を統合するため | AdjustUfCamAsync |
-| UF-F05 | 測定結果読込 | CAS/Functions/UfCamera.cs | UI操作とXML読込結果表示を一体化するため | btnUfCamResultOpen_Click |
+| UF-F05 | 計測結果読込 | CAS/Functions/UfCamera.cs | UI操作とXML読込結果表示を一体化するため | btnUfCamResultOpen_Click |
 
 #### データ配置一覧
 
 | データ名 | 配置先 | 保存形式 | バックアップ方針 | 備考 |
 |----------|--------|----------|------------------|------|
-| U/F計測結果 | ローカルファイル | XML | 測定フォルダ世代管理 | UfMeasResult.xml |
+| U/F計測結果 | ローカルファイル | XML | 計測フォルダ世代管理 | UfMeasResult.xml |
 | U/F調整結果 | ローカルファイル | XML | ログフォルダ世代管理 | UnitCpInfo.xml |
-| 測定画像 | 測定/ログフォルダ | 画像ファイル | 世代管理 | UF_yyyyMMddHHmm |
+| 計測画像 | 測定/ログフォルダ | 画像ファイル | 世代管理 | UF_yyyyMMddHHmm |
 | 実行ログ | 測定/ログフォルダ | テキスト | 世代管理 | saveUfLog |
 | カメラ連携設定 | Components配下 | XML | 実行都度更新 | CamCont.xml |
 

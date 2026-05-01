@@ -21,7 +21,7 @@
 
 ソリューション上、オペレータが利用する WPF アプリケーション CAS と、カメラ制御補助アプリケーション AlphaCameraController で構成される。
 
-実行時は、CAS Components 配下の AlphaCameraController.exe を別プロセスとして起動し、AlphaCameraController が CameraControl.dll を動的ロードしてカメラ実機を制御する。CAS と AlphaCameraController の間では、CameraDataClass で定義された制御データ CamCont.bin を XML ファイルとして受け渡す構成である。CAS 本体は OpenCvSharp、AcquisitionARW を利用して画像解析・RAW 画像取扱いを実施し、Controller に対する補正処理を行う。外部連携先として、調整対象となるCabinetを制御するController及びカメラを利用する。
+実行時は、CAS Components 配下の AlphaCameraController.exe を別プロセスとして起動し、AlphaCameraController が CameraControl.dll を動的読込してカメラ実機を制御する。CAS と AlphaCameraController の間では、CameraDataClass で定義された制御データ CamCont.bin を XML ファイルとして受け渡す構成である。CAS 本体は OpenCvSharp、AcquisitionARW を利用して画像解析・RAW 画像取扱いを実施し、Controller に対する補正処理を行う。外部連携先として、調整対象となるCabinetを制御するController及びカメラを利用する。
 
 なお、本システムはSaaS/ASP を前提としたWeb システムではなく、.NET Framework 4.5/4.5.1 ベースのオンプレミス型Windows アプリケーションとして構成する。
 
@@ -37,7 +37,7 @@ flowchart LR
         CAS --> SettingFiles["設定ファイル"]
         CAS --> CamCtlFile["CamCont.bin"]
         CAS -. 起動.-> Alpha["AlphaCameraController.exe"]
-        Alpha -. 動的ロード.-> CamLib["CameraControl.dll"]
+        Alpha -. 動的読込.-> CamLib["CameraControl.dll"]
         CAS -. 共通データ利用 .-> DataLib["CameraDataClass.dll"]
         Alpha -. 共通データ利用 .-> DataLib
         Alpha --> CamCtlFile 
@@ -66,7 +66,7 @@ flowchart TD
 |----------|------|------|
 | CAS | システムの主アプリケーション。条件設定、撮影、画像解析、補正値算出、Controller 連携、結果表示を担う。 | WPF、.NET Framework 4.5.1。ソリューションの中核。 |
 | AlphaCameraController | CAS から起動されるカメラ制御補助アプリケーション。常駐しながら制御ファイルを監視し、撮影やライブビュー実行を行う。| WPF アプリケーション。通知領域常駐型。|
-| CameraControl | カメラ接続、撮影、撮影条件設定、AF 、ライブビュー制御を担う共通ライブラリ。| CameraControllerSharp 、OpenCvSharp を参照し、AlphaCameraController から動的ロードされる。|
+| CameraControl | カメラ接続、撮影、撮影条件設定、AF 、ライブビュー制御を担う共通ライブラリ。| CameraControllerSharp 、OpenCvSharp を参照し、AlphaCameraController から動的読込される。|
 | CameraDataClass | 撮影条件、AF エリア、基準位置、制御データ、座標などの共通データ定義を提供する。| CAS 、AlphaCameraController 、CameraControl の各プロジェクトで参照される。|
 | Controller | CAS からの制御対象。パターン表示および補正値転送の対象となる。| 実機との通信仕様は別途定義が必要。|
 | Cabinet | 撮影・補正対象となる表示装置。| Controller から表示制御される。|
@@ -124,7 +124,7 @@ flowchart LR
 |-----|--------------------|------|----------|------------------|------|
 | 1 | CAS | 業務アプリケーション | 撮影条件及び撮影の実行指示、画像解析、補正値算出、Controller 連携、結果表示を行う。 | オペレータ | WPF アプリケーション。システムの中核。 |
 | 2 | AlphaCameraController | 補助アプリケーション | カメラ接続、撮影、オートフォーカス、ライブビュー実行を行う。 | CAS から間接利用 | 通知領域常駐型。CAS から別プロセス起動される。 |
-| 3 | CameraControl | 共通ライブラリ | CameraControllerSharp を利用した接続、設定変更、撮影、ライブビュー制御を提供する。 | AlphaCameraController から利用 | CameraControllerSharp を参照し、動的ロードされる。 |
+| 3 | CameraControl | 共通ライブラリ | CameraControllerSharp を利用した接続、設定変更、撮影、ライブビュー制御を提供する。 | AlphaCameraController から利用 | CameraControllerSharp を参照し、動的読込される。 |
 | 4 | CameraDataClass | 共通ライブラリ | 撮影条件、AF エリア、座標、制御データの共通クラスを提供する。 | CAS、AlphaCameraController、CameraControl | XML シリアライズ対象データを保持する。 |
 
 #### アプリケーション間関連 
@@ -134,7 +134,7 @@ flowchart LR
 | CAS | Controller | 内蔵パターン表示実行、補正値送信、装置制御を行う。| 表示制御情報、補正値 | アプリケーション通信機能による連携 |
 | Controller | Cabinet | 表示パターン反映、補正値反映を行う。| 表示制御信号、補正パラメータ | 装置間制御 |
 | CAS | AlphaCameraController | カメラ制御補助プロセスを起動し、撮影要求を行う。| 起動要求、撮影条件、保存先、制御フラグ | 別プロセス起動+ 制御ファイル連携 |
-| AlphaCameraController | CameraControl | カメラ制御機能を呼び出し、カメラを操作する。| 撮影条件、AF 設定、画像保存先 | DLL 動的ロード |
+| AlphaCameraController | CameraControl | カメラ制御機能を呼び出し、カメラを操作する。| 撮影条件、AF 設定、画像保存先 | DLL 動的読込 |
 | CAS | CameraDataClass | 共通データ型を利用する。| 撮影条件、座標、制御データ | プロジェクト参照 |
 | AlphaCameraController | CameraDataClass | 制御ファイルの読込/書込に共通データ型を利用する。| CameraControlData 、ShootCondition など | プロジェクト参照 |
 | CameraControl | CameraDataClass | カメラ設定関連の共通データ型を利用する。| ShootCondition 、AfAreaSetting など | プロジェクト参照 |
@@ -142,7 +142,7 @@ flowchart LR
 | CAS | 撮影画像ファイル | 撮影画像保存を行う。| 画像ファイル | ファイル入出力 |
 | CAS | CamCont.bin 制御ファイル | AlphaCameraController 向けの制御指示を書き込む。| CameraControlData | ファイル出力 |
 | AlphaCameraController | CamCont.bin 制御ファイル | 制御要求を監視し、実行結果を反映する。| CameraControlData | ファイル読込/更新 |
-| CameraControl | カメラ | カメラ接続、設定、撮影、ライブビューを実行する。| 撮影コマンド、取得画像、 CameraControllerSharp 経由 |
+| CameraControl | カメラ | カメラ接続、設定、撮影、ライブビューを実行する。| 撮影コマンド、撮影画像、 CameraControllerSharp 経由 |
 
 ---
 

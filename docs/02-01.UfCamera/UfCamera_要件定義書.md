@@ -1,4 +1,4 @@
-# 要件定義書
+﻿# 要件定義書
 
 | 項目 | 内容 |
 |------|------|
@@ -23,7 +23,7 @@ U/F調整（カメラ）機能は、LDS の Cabinet/Module 輝度ばらつきを
 - 内蔵パターンを表示したCabinetの撮影
 - 撮影画像から Cabinet/Module の明るさを計測し、U/F 調整値を算出
 - 調整後の再計測と結果確認
-- 測定結果・調整結果の XML 保存と再読込
+- 計測結果・調整結果の XML 保存と再読込
 
 ---
 
@@ -32,10 +32,10 @@ U/F調整（カメラ）機能は、LDS の Cabinet/Module 輝度ばらつきを
 | 業務名 | 業務内容 | ルール・制約 |
 |--------|----------|-------------|
 | カメラ接続 | カメラ・レンズ情報を選択し、撮影可能状態へ遷移する | AlphaCameraController が起動可能であること |
-| 位置合わせ | カメラ位置合わせを実施し、測定可能状態を作る | 対象Cabinetは選択済みかつ矩形であること |
+| 位置合わせ | カメラ位置合わせを実施し、計測可能状態を作る | 対象Cabinetは選択済みかつ矩形であること |
 | U/F計測 | 内蔵パターンを表示した Cabinet の撮影画像を取得し、明るさ計測結果を生成する | 計測中は他操作を抑止し、進捗表示を行う |
 | U/F調整 | 計測結果から U/F 調整値を算出し、調整データを生成する | 調整方式、目標Cabinet、視聴点設定に従う |
-| 結果確認 | 調整後の結果計測、既存 XML の再読込を行う | XML 形式の測定結果を扱う |
+| 結果確認 | 調整後の結果計測、既存 XML の再読込を行う | XML 形式の計測結果を扱う |
 
 ---
 
@@ -103,7 +103,7 @@ flowchart TD
 | U/F計測 | `btnUfCamMeasStart_Click` から `MeasureUfAsync` 実行 | 進捗・残時間表示あり |
 | U/F調整 | `btnUfCamAdjustStart_Click` から `AdjustUfCamAsync` 実行 | 調整方式、目標Cabinet、視聴点設定あり |
 | 調整後再計測 | 調整完了後に `MeasureUfAsync` を任意実行 | `cbUfCamMeasResult` により制御 |
-| 測定結果読込 | `btnUfCamResultOpen_Click` | `UfMeasResult.xml` を再表示 |
+| 計測結果読込 | `btnUfCamResultOpen_Click` | `UfMeasResult.xml` を再表示 |
 
 ---
 
@@ -121,7 +121,7 @@ flowchart TD
 
 - 作業中断（Abort）時に ThroughMode 解除、ユーザー設定復元、内部信号停止を安全に行えること
 - 非Developerモードでは校正テーブル値を結果ファイルへ残さないこと
-- 実行ごとに測定結果 XML、調整結果 XML、ログを保存できること
+- 実行ごとに計測結果 XML、調整結果 XML、ログを保存できること
 
 ---
 
@@ -129,7 +129,7 @@ flowchart TD
 
 ### 2-1. システム全体像
 
-UfCamera 機能は CAS 内の U/F 調整サブシステムとして動作し、カメラ画像取得、画像解析、色度・輝度補正値算出、Controller 連携を統合する。
+UfCamera 機能は CAS 内の U/F 調整サブシステムとして動作し、カメラ画像撮影、画像解析、色度・輝度補正値算出、Controller 連携を統合する。
 
 ```mermaid
 flowchart LR
@@ -153,7 +153,7 @@ flowchart LR
 - カメラ位置合わせ・プレビュー更新
 - U/F計測・進捗管理・中断
 - U/F調整・調整後再計測
-- 測定結果 XML の保存・再読込
+- 計測結果 XML の保存・再読込
 - 調整方式切替、目標Cabinet選択、視聴点設定
 
 #### 影響を受ける周辺システム
@@ -192,7 +192,7 @@ flowchart LR
 | 2-4-08 | 視聴点設定 | 垂直・水平方向の視聴点補正条件を設定できること | 中 |
 | 2-4-09 | U/F調整値算出 | 計測結果から U/F 調整値を自動算出できること | 高 |
 | 2-4-10 | 調整後再計測 | 調整後に結果計測を任意実行できること | 中 |
-| 2-4-11 | 測定結果保存・再読込 | `UfMeasResult.xml` を保存し、再表示できること | 中 |
+| 2-4-11 | 計測結果保存・再読込 | `UfMeasResult.xml` を保存し、再表示できること | 中 |
 | 2-4-12 | エラー通知・中断 | カメラ異常、通信異常、中断操作を安全に処理できること | 高 |
 
 ---
@@ -201,9 +201,9 @@ flowchart LR
 
 | データ名 | 主要項目 | 関連データ | 備考 |
 |----------|----------|-----------|------|
-| UfCamMeasLog | 撮影距離、壁高さ、カメラ高さ、開始/終了カメラ位置、測定結果一覧 | 撮影画像、UfCamMeasValue | 計測結果 XML の中核データ |
+| UfCamMeasLog | 撮影距離、壁高さ、カメラ高さ、開始/終了カメラ位置、計測結果一覧 | 撮影画像、UfCamMeasValue | 計測結果 XML の中核データ |
 | UfCamAdjLog | 撮影距離、壁高さ、カメラ高さ、開始/終了カメラ位置、補正点情報一覧 | UfCamCabinetCpInfo | 調整結果 XML の中核データ |
-| UfCamMeasValue | Cabinet 単位の測定結果、Module 情報、補正前後値 | UfCamModule, UfCamMp | U/F計測結果の明細 |
+| UfCamMeasValue | Cabinet 単位の計測結果、Module 情報、補正前後値 | UfCamModule, UfCamMp | U/F計測結果の明細 |
 | UfCamCabinetCpInfo | Cabinet 単位の補正点群、補正前後の評価値 | UfCamCorrectionPoint | 調整計算・転送の基礎情報 |
 | CameraControlData | 撮影条件、AF条件、保存先、実行フラグ | CamCont.xml | AlphaCameraController との連携ファイル |
 | UserSetting | ThroughMode、LightOutput、TempCorrection など | Controller設定 | 実行前後で退避・復元する |
@@ -283,7 +283,7 @@ flowchart LR
 | 項目 | 要件内容 |
 |------|----------|
 | 監視 | 実行状況は進捗ウィンドウとログで追跡可能であること |
-| 結果管理 | 測定結果 XML、調整結果 XML を保存し再利用可能であること |
+| 結果管理 | 計測結果 XML、調整結果 XML を保存し再利用可能であること |
 | 障害対応 | カメラ起動失敗、撮影失敗、通信失敗、設定不正時は処理停止とメッセージ通知を行うこと |
 | 自動化（RBA） | 本機能範囲では対象外（将来検討） |
 
